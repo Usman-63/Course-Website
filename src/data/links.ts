@@ -20,9 +20,9 @@ export const courseLinks: CourseLink[] = [
   },
   {
     id: '3',
-    title: 'Project Guidelines',
-    url: '#',
-    description: 'Instructions for the final capstone project.'
+    title: 'WeChat',
+    url: 'https://u.wechat.com/MMit10lJvgrnsWxLEIQIelY?s=2',
+    description: 'Contact Andrew via WeChat for course support and questions.'
   },
   // Add more links here as needed
 ];

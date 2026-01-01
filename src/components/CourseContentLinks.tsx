@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { FileText, ExternalLink } from 'lucide-react';
+import { FileText, ExternalLink, UserPlus, MessageCircle } from 'lucide-react';
 import { courseLinks } from '../data/links';
 
 const container = {
@@ -19,6 +19,19 @@ const item = {
 };
 
 const CourseContentLinks: React.FC = () => {
+  // Function to get the appropriate icon based on link title
+  const getIcon = (title: string) => {
+    if (title.toLowerCase().includes('syllabus') || title.toLowerCase().includes('course')) {
+      return <FileText className="w-6 h-6 text-navy" />;
+    } else if (title.toLowerCase().includes('register')) {
+      return <UserPlus className="w-6 h-6 text-navy" />;
+    } else if (title.toLowerCase().includes('wechat')) {
+      return <MessageCircle className="w-6 h-6 text-navy" />;
+    }
+    // Default icon
+    return <FileText className="w-6 h-6 text-navy" />;
+  };
+
   return (
     <div className="w-full bg-navy-light py-16 px-4" id="content">
       <div className="container mx-auto">
@@ -64,7 +77,7 @@ const CourseContentLinks: React.FC = () => {
             >
               <div className="flex items-start justify-between mb-4">
                 <div className="p-3 bg-yellow rounded-lg">
-                  <FileText className="w-6 h-6 text-navy" />
+                  {getIcon(link.title)}
                 </div>
                 <ExternalLink className="w-4 h-4 text-gray-400 group-hover:text-yellow transition-colors" />
               </div>
