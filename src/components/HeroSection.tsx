@@ -20,14 +20,17 @@ const HeroSection: React.FC = () => {
         {/* Overlay Content in the "Blue Area" (Left side) */}
         <div className="absolute inset-0 flex items-center">
           <div className="container mx-auto px-4">
-            <div className="w-full md:w-[45%] lg:w-[40%] flex flex-col gap-6 pl-4 md:pl-8 lg:pl-12">
+            <div className="w-full md:w-[45%] lg:w-[40%] flex flex-col gap-6 pl-4 md:pl-8 lg:pl-12 relative">
+              
+              {/* Mobile background overlay for better text readability */}
+              <div className="absolute -inset-4 md:inset-0 bg-navy/90 md:bg-transparent rounded-lg md:rounded-none"></div>
               
               {/* Instructor Profile */}
               <motion.div 
                 initial={{ x: -50, opacity: 0 }}
                 animate={{ x: 0, opacity: 1 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
-                className="flex flex-col gap-4"
+                className="flex flex-col gap-4 relative z-10"
               >
                 <div className="flex items-center gap-4">
                   <div className="relative shrink-0">
@@ -54,7 +57,7 @@ const HeroSection: React.FC = () => {
                   initial={{ y: 20, opacity: 0 }}
                   animate={{ y: 0, opacity: 1 }}
                   transition={{ duration: 0.8, delay: 0.6 }}
-                  className="text-white/90 space-y-4"
+                  className="text-white/90 space-y-4 relative z-10"
                 >
                   <p className="text-sm md:text-base leading-relaxed font-light text-gray-200">
                     Co-founder and CEO of Azure Partners, an AI strategist and author with experience at Amazon, IBM, and multiple startups. Currently leads the AI Mastery program at Columbia University and advises global startups on AI innovation, education, and go-to-market strategy.
