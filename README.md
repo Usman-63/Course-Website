@@ -1,123 +1,149 @@
-# Gemini 3 Masterclass - Course Website
+# Gemini 3 Masterclass Course Website
 
-A modern, responsive course landing page built with React, TypeScript, and Vite. Features a hero section, course content links, and integration with Google Forms for registration.
+A modern course website with admin panel for managing course content, modules, links, and pricing.
 
-## 🚀 Tech Stack
+## Features
 
-- **React 18** - UI library
-- **TypeScript** - Type safety
-- **Vite** - Build tool and dev server
-- **Tailwind CSS** - Styling
-- **Framer Motion** - Animations
-- **Lucide React** - Icons
+- 🎓 Dynamic course content management
+- 📝 Admin panel for content editing
+- 💰 Flexible pricing tiers with features
+- 📅 Schedule information display
+- 🔗 Resource links management
+- 📱 Responsive design
+- ⚡ Fast and modern UI
 
-## 📦 Installation
+## Tech Stack
 
+### Frontend
+- React + TypeScript
+- Vite
+- Tailwind CSS
+- Framer Motion
+- React Router
+- Lucide React Icons
+
+### Backend
+- Python Flask
+- Google Drive API (for data storage)
+- Flask-CORS
+- Gunicorn (production server)
+
+## Project Structure
+
+```
+course-website/
+├── backend/          # Flask backend API
+│   ├── app.py       # Main Flask application
+│   ├── routes.py    # API routes
+│   ├── google_drive.py  # Google Drive integration
+│   ├── auth.py      # Admin authentication
+│   ├── requirements.txt
+│   ├── Procfile     # For Render deployment
+│   └── render.yaml  # Render configuration
+├── src/             # React frontend
+│   ├── components/  # React components
+│   ├── pages/       # Page components
+│   ├── services/    # API services
+│   └── layouts/     # Layout components
+└── public/          # Static assets
+```
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js 18+ and npm
+- Python 3.11+
+- Google Cloud Project with Drive API enabled
+- Service Account with Drive API access
+
+### Frontend Setup
+
+1. Install dependencies:
 ```bash
-# Install dependencies
 npm install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
-
-# Preview production build
-npm run preview
 ```
 
-## 🎨 Features
+2. Create `.env` file:
+```env
+VITE_API_URL=http://localhost:5000
+```
 
-- **Hero Section** - Eye-catching branding with yellow/navy theme
-- **Course Content Links** - Dynamic grid of course materials
-- **Registration Link** - Direct link to Google Forms registration
-- **Responsive Design** - Works on all devices
-- **Smooth Animations** - Framer Motion powered transitions
-
-## 🌐 Deployment to Vercel
-
-This project is configured for easy deployment to Vercel.
-
-### Option 1: Deploy via Vercel CLI
-
+3. Start development server:
 ```bash
-# Install Vercel CLI globally
-npm i -g vercel
-
-# Deploy
-vercel
-
-# Deploy to production
-vercel --prod
+npm run dev
 ```
 
-### Option 2: Deploy via GitHub
+### Backend Setup
 
-1. Push your code to GitHub
-2. Go to [vercel.com](https://vercel.com)
-3. Click "New Project"
-4. Import your GitHub repository
-5. Vercel will auto-detect Vite and configure everything
-6. Click "Deploy"
-
-### Configuration
-
-The `vercel.json` file is already configured with:
-- ✅ Build command: `npm run build`
-- ✅ Output directory: `dist`
-- ✅ SPA routing (all routes redirect to index.html)
-- ✅ Asset caching headers
-
-## 📁 Project Structure
-
-```
-├── src/
-│   ├── components/      # React components
-│   │   ├── HeroSection.tsx
-│   │   ├── CourseContentLinks.tsx
-│   │   └── RegistrationForm.tsx
-│   ├── data/           # Data files
-│   │   └── links.ts    # Course content links
-│   ├── assets/         # Images and static assets
-│   ├── App.tsx         # Main app component
-│   └── main.tsx        # Entry point
-├── public/             # Public assets
-├── dist/               # Build output (generated)
-├── vercel.json         # Vercel configuration
-└── package.json        # Dependencies
+1. Navigate to backend directory:
+```bash
+cd backend
 ```
 
-## 🔧 Configuration
-
-### Adding Course Links
-
-Edit `src/data/links.ts` to add or modify course content links:
-
-```typescript
-export const courseLinks: CourseLink[] = [
-  {
-    id: '1',
-    title: 'Course Syllabus',
-    url: 'https://...',
-    description: 'Detailed breakdown...'
-  },
-  // Add more links here
-];
+2. Create virtual environment:
+```bash
+python -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-### Updating Registration Form
+3. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
 
-The registration link is in `src/data/links.ts` with the title "Register Now". Update the URL if the Google Form changes.
+4. Create `.env` file (see `backend/.env.example`):
+```env
+GOOGLE_DRIVE_FILE_ID=your_file_id
+ADMIN_PASSWORD=your_password
+CORS_ORIGINS=http://localhost:5173
+```
 
-## 🎯 Environment Variables
+5. Add `service_account.json` file (from Google Cloud Console)
 
-No environment variables are required for this project. All configuration is in the codebase.
+6. Run the server:
+```bash
+python app.py
+```
 
-## 📝 License
+## Deployment
 
-Private project - All rights reserved.
+See [backend/DEPLOYMENT.md](./backend/DEPLOYMENT.md) for detailed deployment instructions.
 
----
+### Quick Deploy
 
-Built with ❤️ for Gemini 3 Masterclass
+**Backend (Render):**
+1. Push code to GitHub
+2. Connect repository to Render
+3. Set environment variables
+4. Deploy
+
+**Frontend (Vercel):**
+1. Push code to GitHub
+2. Connect repository to Vercel
+3. Set `VITE_API_URL` environment variable
+4. Deploy
+
+## Environment Variables
+
+### Frontend
+- `VITE_API_URL`: Backend API URL
+
+### Backend
+- `GOOGLE_DRIVE_FILE_ID`: Google Drive file ID
+- `ADMIN_PASSWORD`: Admin panel password
+- `CORS_ORIGINS`: Allowed CORS origins (comma-separated)
+- `SERVICE_ACCOUNT_JSON`: Service account JSON (alternative to file)
+- `PORT`: Server port (default: 5000)
+
+## Admin Panel
+
+Access the admin panel at `/admin` to:
+- Manage course modules
+- Add/edit/delete links
+- Configure pricing tiers
+- Update schedule information
+
+## License
+
+Private project - All rights reserved
