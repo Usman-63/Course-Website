@@ -225,9 +225,12 @@ const AdminPanel: React.FC = () => {
                                   const oldValue = pricing[key];
                                   delete pricing[key];
                                   // Convert to new format if it's still a number
-                                  const newValue = typeof oldValue === 'number' 
-                                    ? { name: e.target.value, price: oldValue, features: [] }
-                                    : { ...oldValue, name: e.target.value };
+                                  let newValue: { name: string; price: number; features?: string[] };
+                                  if (typeof oldValue === 'number') {
+                                    newValue = { name: e.target.value, price: oldValue, features: [] };
+                                  } else {
+                                    newValue = { ...oldValue, name: e.target.value };
+                                  }
                                   pricing[e.target.value.toLowerCase().replace(/\s+/g, '_')] = newValue;
                                   setCourseData({
                                     ...courseData,
@@ -247,9 +250,12 @@ const AdminPanel: React.FC = () => {
                                 onChange={(e) => {
                                   const pricing = { ...courseData.metadata.pricing };
                                   // Convert to new format if it's still a number
-                                  pricing[key] = typeof value === 'number'
-                                    ? { name: tierName, price: parseFloat(e.target.value) || 0, features: [] }
-                                    : { ...value, price: parseFloat(e.target.value) || 0 };
+                                  if (typeof value === 'number') {
+                                    pricing[key] = { name: tierName, price: parseFloat(e.target.value) || 0, features: [] };
+                                  } else {
+                                    const tierObj = value as { name: string; price: number; features?: string[] };
+                                    pricing[key] = { ...tierObj, price: parseFloat(e.target.value) || 0 };
+                                  }
                                   setCourseData({
                                     ...courseData,
                                     metadata: {
@@ -306,7 +312,11 @@ const AdminPanel: React.FC = () => {
                       }
                       
                       // Handle new format (object with name, price, and features)
-                      const features = value.features || [];
+                      // At this point, value should be an object, but TypeScript doesn't know
+                      const tierValue = typeof value === 'object' && value !== null && 'name' in value 
+                        ? value as { name: string; price: number; features?: string[] }
+                        : { name: '', price: 0, features: [] };
+                      const features = tierValue.features || [];
                       const featuresText = features.join('\n');
                       
                       return (
@@ -314,10 +324,10 @@ const AdminPanel: React.FC = () => {
                           <div className="flex gap-3 items-center">
                             <input
                               type="text"
-                              value={value.name || ''}
+                              value={tierValue.name || ''}
                               onChange={(e) => {
                                 const pricing = { ...courseData.metadata.pricing };
-                                pricing[key] = { ...value, name: e.target.value };
+                                pricing[key] = { ...tierValue, name: e.target.value };
                                 setCourseData({
                                   ...courseData,
                                   metadata: {
@@ -332,10 +342,10 @@ const AdminPanel: React.FC = () => {
                             <span className="text-gray-400">$</span>
                             <input
                               type="number"
-                              value={value.price || 0}
+                              value={tierValue.price || 0}
                               onChange={(e) => {
                                 const pricing = { ...courseData.metadata.pricing };
-                                pricing[key] = { ...value, price: parseFloat(e.target.value) || 0 };
+                                pricing[key] = { ...tierValue, price: parseFloat(e.target.value) || 0 };
                                 setCourseData({
                                   ...courseData,
                                   metadata: {
@@ -372,7 +382,7 @@ const AdminPanel: React.FC = () => {
                               onChange={(e) => {
                                 const newFeatures = e.target.value.split('\n').filter(f => f.trim());
                                 const pricing = { ...courseData.metadata.pricing };
-                                pricing[key] = { ...value, features: newFeatures };
+                                pricing[key] = { ...tierValue, features: newFeatures };
                                 setCourseData({
                                   ...courseData,
                                   metadata: {
