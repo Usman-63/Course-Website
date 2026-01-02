@@ -18,25 +18,19 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
 
     try {
-      const adminPassword = import.meta.env.VITE_ADMIN_PASSWORD;
+      // Call backend API to verify password
+      const result = await adminLogin(password);
       
-      if (!adminPassword) {
-        setError('Admin password not configured');
+      if (result.success) {
+        // Set token (using password as token for simple auth)
+        setAuthToken(password);
+        onLoginSuccess();
+      } else {
+        setError(result.error || 'Invalid password');
         setIsLoading(false);
-        return;
       }
-
-      if (password !== adminPassword) {
-        setError('Invalid password');
-        setIsLoading(false);
-        return;
-      }
-
-      // Set token (using password as token for simple auth)
-      setAuthToken(password);
-      onLoginSuccess();
     } catch (err) {
-      setError('Login failed. Please try again.');
+      setError('Login failed. Please check your connection and try again.');
       setIsLoading(false);
     }
   };

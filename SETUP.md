@@ -52,11 +52,8 @@ npm install
 
 2. Create `.env` file in the root directory:
 ```env
-VITE_ADMIN_PASSWORD=your_secure_password_here
 VITE_API_URL=http://localhost:5000
 ```
-
-**Note:** The `VITE_ADMIN_PASSWORD` must match the `ADMIN_PASSWORD` in the backend `.env` file.
 
 3. Run the development server:
 ```bash
