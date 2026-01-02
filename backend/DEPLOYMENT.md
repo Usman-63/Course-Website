@@ -42,9 +42,9 @@ This guide covers deploying the backend to Render and the frontend to Vercel.
 4. Configure the service:
    - **Name**: `course-website-backend` (or your preferred name)
    - **Environment**: `Python 3`
+   - **Root Directory**: `backend` ⚠️ **IMPORTANT: Set this to `backend`**
    - **Build Command**: `pip install -r requirements.txt`
    - **Start Command**: `gunicorn app:app`
-   - **Root Directory**: `backend`
 
 5. Add Environment Variables:
    - `GOOGLE_DRIVE_FILE_ID`: Your Google Drive file ID
