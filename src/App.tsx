@@ -30,6 +30,34 @@ const LoadingFallback = () => (
 );
 
 function App() {
+  const isConfigMissing = !import.meta.env.VITE_FIREBASE_API_KEY;
+
+  if (isConfigMissing) {
+    return (
+      <div className="min-h-screen bg-navy flex items-center justify-center p-4">
+        <div className="bg-white rounded-xl p-8 max-w-lg shadow-xl border-2 border-red-500">
+           <h1 className="text-2xl font-bold text-red-600 mb-4 flex items-center gap-2">
+             <span className="text-3xl">⚠️</span> Configuration Error
+           </h1>
+           <p className="text-gray-700 mb-4">
+             The application is missing required environment variables. This usually happens when the project is deployed without setting up the configuration.
+           </p>
+           <p className="text-gray-600 text-sm mb-2 font-semibold">
+             Please check your Vercel (or other provider) environment settings:
+           </p>
+           <ul className="list-disc list-inside text-sm text-gray-800 bg-gray-100 p-4 rounded mb-4 font-mono">
+             <li>VITE_FIREBASE_API_KEY</li>
+             <li>VITE_FIREBASE_AUTH_DOMAIN</li>
+             <li>VITE_FIREBASE_PROJECT_ID</li>
+           </ul>
+           <p className="text-xs text-gray-500 mt-4">
+             If you are running locally, ensure your <code>.env</code> file is correct.
+           </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <AuthProvider>
