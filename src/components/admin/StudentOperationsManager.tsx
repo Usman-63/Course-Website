@@ -3,7 +3,7 @@ import {
   Users, Search, DollarSign, FileText, 
   Mail, Loader2, AlertCircle, TrendingUp, RefreshCw, 
   ArrowUpDown, ArrowUp, ArrowDown, Settings, X, CheckSquare, Square,
-  MoreHorizontal, ChevronRight, Calendar, List
+  Calendar, List
 } from 'lucide-react';
 import { 
   getStudentsOperationsCombined,

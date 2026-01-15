@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../services/firebase';
 import { auth } from '../../services/firebase';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Users, Search, ExternalLink, Shield, ShieldAlert, Trash2 } from 'lucide-react';
+import { Users, Search, ExternalLink, Shield, ShieldAlert, Trash2, Loader } from 'lucide-react';
 import { getCourseData } from '../../services/api';
 
 interface User {
@@ -20,7 +20,7 @@ const StudentManager: React.FC = () => {
   const [students, setStudents] = useState<User[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  const [totalModules, setTotalModules] = useState<number>(0);
+  const [totalModules, setTotalModules] = useState(0);
   const [authReady, setAuthReady] = useState(false);
 
   // Wait for auth to be ready
@@ -139,7 +139,17 @@ const StudentManager: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredStudents.map((student) => {
+            {loading && (
+              <tr>
+                <td colSpan={5} className="py-20 text-center">
+                  <div className="flex flex-col items-center justify-center gap-3 text-gray-500">
+                    <Loader className="w-8 h-8 animate-spin text-primary" />
+                    <p>Loading students...</p>
+                  </div>
+                </td>
+              </tr>
+            )}
+            {!loading && filteredStudents.map((student) => {
               const completedCount = student.progress ? Object.values(student.progress).filter(Boolean).length : 0;
               const progressPercent = totalModules > 0 ? Math.round((completedCount / totalModules) * 100) : 0;
               
@@ -273,7 +283,7 @@ const StudentManager: React.FC = () => {
             })}
           </tbody>
         </table>
-        {filteredStudents.length === 0 && (
+        {!loading && filteredStudents.length === 0 && (
           <div className="text-center py-20 text-gray-500 flex flex-col items-center">
             <Search className="w-12 h-12 mb-4 opacity-20" />
             <p className="text-lg font-medium text-gray-900">No students found</p>

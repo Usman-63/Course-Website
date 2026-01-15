@@ -1,6 +1,8 @@
-import React, { useState, useEffect, Fragment } from 'react';
+'use client';
+
+import { useState, useEffect, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, Save, CheckCircle, Search, CheckSquare, Square, Loader2 } from 'lucide-react';
+import { X, Save, Search, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { ClassSession, classService } from '../../services/classService';
 import { StudentOperations } from '../../services/api';
 import { useToast } from '../Toast';

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, Users, Plus, Trash2, CheckCircle } from 'lucide-react';
 import { ClassSession, classService } from '../../services/classService';
 import { StudentOperations } from '../../services/api';

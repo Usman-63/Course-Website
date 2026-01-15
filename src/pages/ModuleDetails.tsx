@@ -33,7 +33,7 @@ const ModuleDetails: React.FC = () => {
         setLoading(true);
         // Fetch course data to find the module
         const courseData = await getCourseData();
-        const foundModule = courseData.modules.find(m => m.id === moduleId);
+        const foundModule = courseData.modules?.find(m => m.id === moduleId);
         setModule(foundModule || null);
 
         // Fetch user submissions

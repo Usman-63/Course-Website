@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Users, DollarSign, TrendingUp, AlertCircle, Loader2, Calendar, MessageSquare, MoreHorizontal, BookOpen, CheckCircle, Clock, FileText } from 'lucide-react';
+import { Users, DollarSign, AlertCircle, Loader2, Calendar, BookOpen, CheckCircle, FileText } from 'lucide-react';
 import { getStudentsOperationsCombined, OperationsMetrics, getCourseData, CourseModule } from '../../services/api';
 import { db } from '../../services/firebase';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';

@@ -1,4 +1,4 @@
-import React, { useState, Fragment, useEffect } from 'react';
+import { useState, Fragment, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { Dialog, Transition, Menu } from '@headlessui/react';
 import { 
@@ -232,7 +232,7 @@ export default function AdminLayout() {
                 <Menu.Button className="-m-1.5 flex items-center p-1.5">
                   <span className="sr-only">Open user menu</span>
                   <div className="h-10 w-10 rounded-full bg-gray-200 overflow-hidden border-2 border-white shadow-sm">
-                     <img src="https://ui-avatars.com/api/?name=Admin&background=random" alt="" className="h-full w-full object-cover" />
+                     <img src={`https://ui-avatars.com/api/?name=${userProfile?.name || 'Admin'}&background=random`} alt="" className="h-full w-full object-cover" />
                   </div>
                 </Menu.Button>
                 <Transition
@@ -266,6 +266,12 @@ export default function AdminLayout() {
         </div>
 
         <main className="py-6 px-4 sm:px-6 lg:px-8 flex-1">
+          {authError && (
+            <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
+              <strong className="font-bold">Error: </strong>
+              <span className="block sm:inline">{authError}</span>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>
