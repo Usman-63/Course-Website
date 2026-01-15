@@ -44,9 +44,25 @@ def init_firebase_admin():
                 firebase_admin.initialize_app(cred)
                 print(f"Firebase Admin initialized with path from BASE64 var (fallback): {service_account_b64}")
                 return
-                
+            
+            # Check if it looks like raw JSON (user pasted JSON directly)
+            if service_account_b64.strip().startswith('{'):
+                try:
+                    service_account_info = json.loads(service_account_b64)
+                    cred = credentials.Certificate(service_account_info)
+                    firebase_admin.initialize_app(cred)
+                    print("Firebase Admin initialized with env var credentials (raw JSON)")
+                    return
+                except Exception as e:
+                     print(f"Tried to parse FIREBASE_SERVICE_ACCOUNT_BASE64 as raw JSON but failed: {e}")
+
             try:
                 # Decode base64 to json string
+                # Add padding if missing
+                missing_padding = len(service_account_b64) % 4
+                if missing_padding:
+                    service_account_b64 += '=' * (4 - missing_padding)
+                    
                 service_account_info = json.loads(base64.b64decode(service_account_b64))
                 cred = credentials.Certificate(service_account_info)
                 firebase_admin.initialize_app(cred)
