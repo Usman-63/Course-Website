@@ -11,6 +11,8 @@ instance/
 *.db
 .env
 service_account.json
+serviceAccountKey.json
+firebase-adminsdk-*.json
 *.log
 
 service_account.json
