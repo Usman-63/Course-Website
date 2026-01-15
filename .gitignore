@@ -47,3 +47,7 @@ backend/.pytest_cache/
 .pytest_cache/
 coverage/
 htmlcov/
+
+# Trae/Cursor artifacts
+.trae/
+.cursor/
