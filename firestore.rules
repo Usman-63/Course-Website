@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Announcements: Public read, Admin write
+    match /announcements/{announcement} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == 'admin-user';
+    }
+    
+    // Polls: Public read, Authenticated update (for voting), Admin write
+    match /polls/{poll} {
+      allow read: if true;
+      // Allow authenticated users to update polls (for voting)
+      // This allows updating options, totalVotes, and votes fields
+      allow update: if request.auth != null;
+      // Admin can do full writes (create, delete)
+      allow create, delete: if request.auth != null && request.auth.uid == 'admin-user';
+    }
+    
+    // User Data (Progress, Submissions): Owner only OR Admin
+    match /users/{userId} {
+      // Allow users to read their own data or admin to read any
+      allow read: if request.auth != null && (request.auth.uid == userId || request.auth.uid == 'admin-user');
+      // Allow users to write their own data (including votedPolls) or admin to write any
+      allow write: if request.auth != null && (request.auth.uid == userId || request.auth.uid == 'admin-user');
+    }
+  }
+}

@@ -14,13 +14,28 @@ export default {
     extend: {
       colors: {
         navy: {
-          DEFAULT: "#1a2332",
-          light: "#2a3546",
+          DEFAULT: "#0f172a", // Slate 950
+          light: "#1e293b",   // Slate 800
+          lighter: "#334155", // Slate 700
+          hover: "#475569",   // Slate 600
+        },
+        primary: {
+          DEFAULT: "#38bdf8", // Sky 400
+          hover: "#0ea5e9",   // Sky 500
+          light: "rgba(56, 189, 248, 0.1)",
         },
         yellow: {
-          DEFAULT: "#ffd700",
-          hover: "#e6c200",
+          DEFAULT: "#fbbf24", // Amber 400 - Warm accent
+          hover: "#f59e0b",   // Amber 500
         },
+        surface: {
+          DEFAULT: "#1e293b", // Slate 800
+          hover: "#334155",   // Slate 700
+        },
+      },
+      fontFamily: {
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Lexend', 'Inter', 'system-ui', 'sans-serif'],
       },
     },
   },

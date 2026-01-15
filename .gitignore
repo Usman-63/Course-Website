@@ -32,6 +32,7 @@ dist-ssr
 # Backend specific
 backend/.env
 backend/service_account.json
+backend/serviceAccountKey.json
 backend/__pycache__/
 backend/*.pyc
 backend/*.pyo
@@ -40,3 +41,9 @@ backend/.Python
 backend/venv/
 backend/env/
 backend/.venv
+backend/logs/
+backend/instance/
+backend/.pytest_cache/
+.pytest_cache/
+coverage/
+htmlcov/

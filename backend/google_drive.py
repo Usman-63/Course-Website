@@ -12,10 +12,23 @@ class GoogleDriveClient:
         if not self.file_id:
             raise ValueError("GOOGLE_DRIVE_FILE_ID environment variable is required")
         
-        # Try to get service account JSON from environment variable first (for Render)
+        # 1. Try Base64 encoded JSON (Best for Render/Production)
+        service_account_base64 = os.getenv('SERVICE_ACCOUNT_BASE64')
+        # 2. Try Raw JSON string
         service_account_json = os.getenv('SERVICE_ACCOUNT_JSON')
         
-        if service_account_json:
+        if service_account_base64:
+            try:
+                import base64
+                decoded_json = base64.b64decode(service_account_base64).decode('utf-8')
+                service_account_info = json.loads(decoded_json)
+                credentials = service_account.Credentials.from_service_account_info(
+                    service_account_info,
+                    scopes=['https://www.googleapis.com/auth/drive']
+                )
+            except Exception as e:
+                raise ValueError(f"Invalid SERVICE_ACCOUNT_BASE64: {e}")
+        elif service_account_json:
             # Parse JSON from environment variable
             try:
                 service_account_info = json.loads(service_account_json)
@@ -40,12 +53,17 @@ class GoogleDriveClient:
                 scopes=['https://www.googleapis.com/auth/drive']
             )
         
-        self.service = build('drive', 'v3', credentials=credentials)
+        self.credentials = credentials
+    
+    def _get_service(self):
+        """Create a fresh Google Drive service instance per request to avoid SSL errors."""
+        return build('drive', 'v3', credentials=self.credentials, cache_discovery=False)
     
     def get_course_data(self):
         """Read JSON file from Google Drive"""
         try:
-            request = self.service.files().get_media(fileId=self.file_id)
+            service = self._get_service()
+            request = service.files().get_media(fileId=self.file_id)
             file_content = io.BytesIO()
             downloader = MediaIoBaseDownload(file_content, request)
             done = False
@@ -83,10 +101,11 @@ class GoogleDriveClient:
             media = MediaIoBaseUpload(
                 io.BytesIO(json_data.encode('utf-8')),
                 mimetype='application/json',
-                resumable=True
+                resumable=False
             )
             
-            self.service.files().update(
+            service = self._get_service()
+            service.files().update(
                 fileId=self.file_id,
                 media_body=media
             ).execute()

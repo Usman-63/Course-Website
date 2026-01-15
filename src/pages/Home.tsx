@@ -1,20 +1,36 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Link } from 'react-router-dom';
-import { ArrowRight, Zap, BookOpen, Users, BarChart, X, MessageSquare } from 'lucide-react';
-import andrewImage from '../assets/andrew.png';
+import { Link, useNavigate } from 'react-router-dom';
+import { ArrowRight, Zap, BookOpen, Users, BarChart, X, Megaphone } from 'lucide-react';
 import frontImage from '../assets/front.png';
+import andrewImage from '../assets/andrew.png';
 import WeChatModal from '../components/WeChatModal';
+import { useAuth } from '../contexts/AuthContext';
 
 const Home: React.FC = () => {
+  const { currentUser, userProfile } = useAuth();
+  const navigate = useNavigate();
   const [showComingSoon, setShowComingSoon] = useState(false);
   const [showWeChat, setShowWeChat] = useState(false);
+
+  const isActivated = userProfile?.isActive === true || userProfile?.role === 'admin' || currentUser?.uid === 'admin-user';
+
+  const handleTrackProgress = () => {
+    if (currentUser) {
+      if (isActivated) {
+        navigate('/dashboard');
+      } else {
+        navigate('/syllabus');
+      }
+    } else {
+      setShowComingSoon(true);
+    }
+  };
 
   return (
     <>
       {/* Hero Section */}
       <section className="relative min-h-screen flex items-center pt-20 overflow-hidden">
-        {/* Abstract Background Elements */}
         <div className="absolute inset-0 z-0">
           <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-yellow/10 rounded-full blur-[120px] -mr-20 -mt-20"></div>
           <div className="absolute bottom-0 left-0 w-[400px] h-[400px] bg-blue-500/10 rounded-full blur-[100px] -ml-20 -mb-20"></div>
@@ -38,18 +54,20 @@ const Home: React.FC = () => {
               
               <div className="flex flex-col sm:flex-row gap-4">
                 <button 
-                  onClick={() => setShowComingSoon(true)}
+                  onClick={handleTrackProgress}
                   className="inline-flex items-center justify-center px-8 py-4 bg-yellow text-navy font-bold rounded-xl hover:bg-yellow-hover transition-all transform hover:scale-105 shadow-lg shadow-yellow/20"
                 >
                   Track Progress
                   <BarChart className="ml-2 w-5 h-5" />
                 </button>
-                <Link 
-                  to="/syllabus" 
-                  className="inline-flex items-center justify-center px-8 py-4 bg-white/5 text-white font-medium rounded-xl hover:bg-white/10 transition-all border border-white/10 backdrop-blur-sm"
-                >
-                  View Syllabus
-                </Link>
+                {!currentUser && (
+                  <Link 
+                    to="/syllabus" 
+                    className="inline-flex items-center justify-center px-8 py-4 bg-white/5 text-white font-medium rounded-xl hover:bg-white/10 transition-all border border-white/10 backdrop-blur-sm"
+                  >
+                    View Syllabus
+                  </Link>
+                )}
               </div>
             </motion.div>
           </div>
@@ -70,8 +88,6 @@ const Home: React.FC = () => {
                  />
               </div>
             </motion.div>
-            
-            {/* Decorative background circle behind image */}
             <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] border border-white/5 rounded-full -z-10 animate-[spin_60s_linear_infinite]"></div>
           </div>
         </div>
@@ -106,22 +122,26 @@ const Home: React.FC = () => {
                   <BarChart className="w-8 h-8 text-yellow" />
                 </div>
                 
-                <h2 className="text-2xl font-bold text-white mb-2">Progress Tracking</h2>
-                <div className="inline-block px-3 py-1 bg-yellow text-navy text-xs font-bold rounded-full mb-6">
-                  COMING SOON
-                </div>
+                <h2 className="text-2xl font-bold text-white mb-2">Track Your Progress</h2>
                 
                 <p className="text-gray-300 mb-8 leading-relaxed">
-                  We're building a comprehensive dashboard for you to track your masterclass progress. Enroll in the cohort to secure your spot!
+                  Log in or create an account to track your progress, submit homework, and join the community discussion.
                 </p>
                 
-                <div className="text-center border-t border-white/10 pt-6">
+                <div className="flex flex-col gap-3">
                   <Link 
-                    to="/register" 
+                    to="/signup" 
                     onClick={() => setShowComingSoon(false)}
-                    className="inline-flex items-center text-yellow font-bold hover:underline"
+                    className="w-full py-3 bg-yellow text-navy font-bold rounded-xl hover:bg-yellow-hover transition-colors"
                   >
-                    Enroll Now <ArrowRight className="w-4 h-4 ml-2" />
+                    Create Account
+                  </Link>
+                  <Link 
+                    to="/login" 
+                    onClick={() => setShowComingSoon(false)}
+                    className="w-full py-3 bg-white/5 text-white font-bold rounded-xl hover:bg-white/10 transition-colors"
+                  >
+                    Log In
                   </Link>
                 </div>
               </div>
@@ -141,18 +161,16 @@ const Home: React.FC = () => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* Card 1: Large */}
             <div className="md:col-span-2 bg-navy p-8 rounded-3xl border border-white/5 hover:border-yellow/30 transition-colors group">
               <div className="w-12 h-12 bg-blue-500/20 rounded-2xl flex items-center justify-center mb-6 text-blue-400 group-hover:scale-110 transition-transform">
                 <Zap className="w-6 h-6" />
               </div>
               <h3 className="text-2xl font-bold text-white mb-3">The Reasoning Engine</h3>
               <p className="text-gray-400 leading-relaxed">
-                Move beyond simple chatbots. Learn to construct complex logical reasoning chains that allow AI to solve multi-step problems with high accuracy. We break down the "Chain of Thought" methodology specifically for Gemini 3 Pro.
+                Move beyond simple chatbots. Learn to construct complex logical reasoning chains that allow AI to solve multi-step problems with high accuracy.
               </p>
             </div>
 
-            {/* Card 2 */}
             <div className="bg-navy p-8 rounded-3xl border border-white/5 hover:border-yellow/30 transition-colors group">
               <div className="w-12 h-12 bg-purple-500/20 rounded-2xl flex items-center justify-center mb-6 text-purple-400 group-hover:scale-110 transition-transform">
                 <BookOpen className="w-6 h-6" />
@@ -163,7 +181,6 @@ const Home: React.FC = () => {
               </p>
             </div>
 
-            {/* Card 3 */}
             <div className="bg-navy p-8 rounded-3xl border border-white/5 hover:border-yellow/30 transition-colors group">
               <div className="w-12 h-12 bg-green-500/20 rounded-2xl flex items-center justify-center mb-6 text-green-400 group-hover:scale-110 transition-transform">
                 <Users className="w-6 h-6" />
@@ -174,16 +191,21 @@ const Home: React.FC = () => {
               </p>
             </div>
 
-            {/* Card 4: Wide */}
             <div className="md:col-span-2 bg-gradient-to-r from-yellow/10 to-navy p-8 rounded-3xl border border-white/5 hover:border-yellow/30 transition-colors relative overflow-hidden">
                <div className="relative z-10">
                  <h3 className="text-2xl font-bold text-white mb-3">3 Weeks to Mastery</h3>
                  <p className="text-gray-300 max-w-md">
                    An intensive, project-based curriculum designed for professionals who want to lead in the AI era, not just follow.
                  </p>
-                 <Link to="/syllabus" className="inline-flex items-center text-yellow font-bold mt-6 hover:underline">
-                   View Full Curriculum <ArrowRight className="w-4 h-4 ml-2" />
-                 </Link>
+                 {currentUser && isActivated ? (
+                   <Link to="/dashboard" className="inline-flex items-center text-yellow font-bold mt-6 hover:underline">
+                     View Full Curriculum <ArrowRight className="w-4 h-4 ml-2" />
+                   </Link>
+                 ) : (
+                   <Link to="/syllabus" className="inline-flex items-center text-yellow font-bold mt-6 hover:underline">
+                     View Full Curriculum <ArrowRight className="w-4 h-4 ml-2" />
+                   </Link>
+                 )}
                </div>
                <div className="absolute right-0 bottom-0 opacity-20 transform translate-x-1/4 translate-y-1/4">
                  <div className="w-64 h-64 bg-yellow rounded-full blur-[80px]"></div>
@@ -196,69 +218,73 @@ const Home: React.FC = () => {
       {/* Instructor Section */}
       <section className="py-24 relative overflow-hidden">
         <div className="container mx-auto px-4 md:px-6">
-          <motion.div 
-            onClick={() => setShowWeChat(true)}
-            whileHover={{ scale: 1.01 }}
-            className="bg-navy-light rounded-[3rem] p-8 md:p-16 relative border border-white/5 cursor-pointer hover:border-yellow/30 transition-all group"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-              <div className="relative">
-                 <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 mx-auto">
-                    <div className="absolute inset-0 bg-yellow rounded-full transform rotate-6 scale-105 opacity-20"></div>
-                    <img 
-                      src={andrewImage} 
-                      alt="Andrew - Instructor" 
-                      className="w-full h-full object-cover rounded-full border-4 border-navy shadow-2xl relative z-10"
-                    />
-                    {/* Floating badge */}
-                    <div className="absolute -bottom-4 -right-4 bg-yellow text-navy font-bold py-2 px-6 rounded-full shadow-lg z-20">
-                      Instructor
-                    </div>
-                 </div>
-              </div>
-              
-              <div>
-                <h2 className="text-3xl md:text-4xl font-bold text-white mb-6">Meet Your Instructor</h2>
-                <h3 className="text-xl text-yellow font-medium mb-4">Andrew, CEO of Azure Partners</h3>
-                <p className="text-gray-300 text-lg leading-relaxed mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
+            {/* Left: Circular Photo with Instructor Button */}
+            <div className="order-1 md:order-1 flex flex-col items-center md:items-start">
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95 }}
+                whileInView={{ opacity: 1, scale: 1 }}
+                viewport={{ once: true }}
+                className="relative"
+              >
+                <div className="relative w-64 h-64 md:w-80 md:h-80">
+                  <img 
+                    src={andrewImage} 
+                    alt="Andrew - Instructor" 
+                    className="w-full h-full rounded-full object-cover border-4 border-yellow/30 shadow-2xl" 
+                  />
+                </div>
+                <div className="mt-6 flex justify-center md:justify-start">
+                  <div className="px-4 py-2 bg-yellow text-navy font-bold rounded-lg shadow-lg">
+                    Instructor
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+
+            {/* Right: Content */}
+            <div className="order-2 md:order-2">
+              <motion.div 
+                initial={{ opacity: 0, x: 20 }}
+                whileInView={{ opacity: 1, x: 0 }}
+                viewport={{ once: true }}
+              >
+                <h2 className="text-3xl md:text-5xl font-bold text-white mb-6">Meet Your Instructor</h2>
+                <p className="text-yellow text-xl font-semibold mb-6">Andrew, CEO of Azure Partners</p>
+                <p className="text-white text-lg mb-6 leading-relaxed">
                   AI strategist and author with experience at Amazon, IBM, and multiple startups. Currently leads the AI Mastery program at Columbia University and advises global startups on AI innovation.
                 </p>
-                <p className="text-gray-400 mb-8">
+                <p className="text-gray-400 text-base mb-8 italic leading-relaxed">
                   "My goal is to demystify the complex world of Large Language Models and give you practical, build-ready skills that you can apply immediately."
                 </p>
-                <div className="flex gap-4">
-                  {['Amazon', 'IBM', 'Columbia University'].map(company => (
-                    <span key={company} className="px-4 py-2 bg-navy rounded-lg text-sm font-medium text-gray-400 border border-white/5">
-                      {company}
-                    </span>
-                  ))}
-                </div>
                 
-                <div className="mt-8 flex items-center gap-2 text-yellow font-bold group-hover:text-yellow-hover transition-colors">
-                  <MessageSquare className="w-5 h-5" />
-                  <span>Connect on WeChat</span>
+                {/* Affiliation Buttons */}
+                <div className="flex flex-wrap gap-3 mb-8">
+                  <div className="px-4 py-2 bg-navy-light border border-white/10 rounded-lg text-white text-sm font-medium">
+                    Amazon
+                  </div>
+                  <div className="px-4 py-2 bg-navy-light border border-white/10 rounded-lg text-white text-sm font-medium">
+                    IBM
+                  </div>
+                  <div className="px-4 py-2 bg-navy-light border border-white/10 rounded-lg text-white text-sm font-medium">
+                    Columbia University
+                  </div>
                 </div>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
 
-      {/* CTA Section */}
-      <section className="py-24 text-center">
-        <div className="container mx-auto px-4">
-          <h2 className="text-4xl md:text-6xl font-bold text-white mb-8">Ready to Build the Future?</h2>
-          <p className="text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-            Join the next cohort of the Gemini 3 Masterclass. Spots are limited to ensure personalized feedback.
-          </p>
-          <Link 
-            to="/register" 
-            className="inline-flex items-center justify-center px-10 py-5 bg-yellow text-navy font-bold text-lg rounded-full hover:bg-yellow-hover transition-all transform hover:scale-105 shadow-xl shadow-yellow/20"
-          >
-            Enroll Now
-          </Link>
+                {/* WeChat Button */}
+                <button 
+                  onClick={() => setShowWeChat(true)}
+                  className="inline-flex items-center gap-2 text-yellow font-semibold hover:text-yellow-hover transition-colors"
+                >
+                  <Megaphone className="w-5 h-5" />
+                  Connect on WeChat
+                </button>
+              </motion.div>
+            </div>
+          </div>
         </div>
       </section>
+      
       <WeChatModal isOpen={showWeChat} onClose={() => setShowWeChat(false)} />
     </>
   );
