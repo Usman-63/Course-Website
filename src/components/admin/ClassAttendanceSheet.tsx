@@ -34,6 +34,9 @@ export default function ClassAttendanceSheet({ classSession, students, isOpen, o
         } catch {}
       });
       setPresentEmails(initialPresent);
+    } else {
+      // Reset when dialog closes to prevent stale state
+      setPresentEmails(new Set());
     }
   }, [isOpen, students, classSession.id]);
 

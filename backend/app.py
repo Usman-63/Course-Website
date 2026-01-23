@@ -5,7 +5,6 @@ import os
 from pathlib import Path
 
 # Load environment variables BEFORE importing routes
-# This ensures env vars are available when GoogleDriveClient is initialized
 # Get the directory where this file is located
 backend_dir = Path(__file__).parent
 env_path = backend_dir / '.env'
@@ -24,7 +23,7 @@ if not env_path.exists() and not root_env_path.exists():
     # In production (Render), environment variables are set directly
     load_dotenv()
 
-from routes import api
+from api.routes import api
 
 app = Flask(__name__)
 

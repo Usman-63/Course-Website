@@ -25,7 +25,6 @@ export default function AttendanceManager({ students, onUpdate }: AttendanceMana
   const loadClasses = async () => {
     try {
       const data = await classService.getAll();
-      console.log('Loaded classes:', data);
       // Sort by date descending
       setClasses(data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
     } catch (error) {

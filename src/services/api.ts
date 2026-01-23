@@ -402,6 +402,8 @@ export interface OperationsMetrics {
   unpaid_count: number;
   has_resume_count: number;
   onboarding_percentage: number;
+  survey_filled_count: number;
+  survey_not_filled_count: number;
 }
 
 export interface OperationsStatus {

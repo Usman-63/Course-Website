@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { Users, DollarSign, AlertCircle, Loader2, Calendar, BookOpen, CheckCircle, FileText } from 'lucide-react';
-import { getStudentsOperationsCombined, OperationsMetrics, getCourseData, CourseModule } from '../../services/api';
+import { Users, DollarSign, AlertCircle, Loader2, Calendar, BookOpen, CheckCircle, FileText, RefreshCw, Clock } from 'lucide-react';
+import { getStudentsOperationsCombined, OperationsMetrics, getCourseData, CourseModule, getAuthToken } from '../../services/api';
 import { db } from '../../services/firebase';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 
 interface Announcement {
   id: string;
@@ -12,10 +13,13 @@ interface Announcement {
 }
 
 const AdminDashboard: React.FC = () => {
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState<OperationsMetrics | null>(null);
   const [modules, setModules] = useState<CourseModule[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -26,6 +30,10 @@ const AdminDashboard: React.FC = () => {
         ]);
         
         setMetrics(opsRes.metrics || null);
+        // If backend provides last_synced in metrics, capture it
+        if (opsRes.metrics?.last_synced) {
+          setLastSynced(opsRes.metrics.last_synced);
+        }
         setModules(courseRes.modules || []);
 
         // Fetch recent announcements from Firestore
@@ -46,10 +54,58 @@ const AdminDashboard: React.FC = () => {
     loadData();
   }, []);
 
+  const handleSyncNow = async () => {
+    try {
+      setSyncing(true);
+      const token = getAuthToken();
+      if (!token) {
+        console.error('No auth token available');
+        return;
+      }
+      
+      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/admin/students/operations/sync`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (!response.ok || !data.success) {
+        console.error('Sync failed:', data);
+        return;
+      }
+
+      // Update metrics and last synced if returned
+      if (data.metrics) {
+        setMetrics(data.metrics);
+        if (data.metrics.last_synced) {
+          setLastSynced(data.metrics.last_synced);
+        }
+      }
+    } catch (err) {
+      console.error('Error triggering sync:', err);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 text-yellow animate-spin" />
+      <div className="min-h-[60vh] flex items-center justify-center bg-gray-50 px-4">
+        <div className="bg-white rounded-3xl shadow-lg border border-gray-100 px-8 py-6 max-w-xl w-full flex items-center gap-4">
+          <div className="flex-shrink-0">
+            <Loader2 className="w-8 h-8 text-yellow animate-spin" />
+          </div>
+          <div className="space-y-1">
+            <p className="text-sm font-semibold text-gray-900">
+              Loading dashboard data…
+            </p>
+            <p className="text-xs text-gray-500">
+              Fetching course data, operations metrics, and recent announcements. This can take 10–30 seconds on the first load or after a full sync.
+            </p>
+          </div>
+        </div>
       </div>
     );
   }
@@ -64,10 +120,29 @@ const AdminDashboard: React.FC = () => {
       {/* Top Section: Welcome & Stats */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Welcome Card */}
-        <div className="lg:col-span-2 bg-white rounded-3xl p-8 relative overflow-hidden shadow-sm flex flex-col justify-center min-h-[200px]">
+        <div className="lg:col-span-2 bg-white rounded-3xl p-8 relative overflow-hidden shadow-sm flex flex-col justify-between min-h-[200px]">
           <div className="relative z-10 max-w-lg">
             <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome to your Dashboard!</h2>
-            <p className="text-gray-500 mb-6">Overview of your course operations, student progress, and content updates.</p>
+            <p className="text-gray-500 mb-4">Overview of your course operations, student progress, and content updates.</p>
+          </div>
+          <div className="relative z-10 flex items-center justify-between mt-4">
+            <div className="flex items-center gap-2 text-xs text-gray-500">
+              <Clock className="w-4 h-4" />
+              <span>
+                {lastSynced
+                  ? `Last synced: ${new Date(lastSynced).toLocaleString()}`
+                  : 'Sync not run yet'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={handleSyncNow}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-yellow/10 text-yellow-700 hover:bg-yellow/20 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
+              <span>{syncing ? 'Syncing…' : 'Sync Now'}</span>
+            </button>
           </div>
           {/* Abstract background decoration */}
           <div className="absolute right-0 top-0 h-full w-1/3 bg-gray-50 rounded-l-full opacity-50 transform translate-x-1/4"></div>
@@ -76,11 +151,23 @@ const AdminDashboard: React.FC = () => {
 
         {/* Quick Stats Column */}
         <div className="space-y-4">
-          <div className="bg-yellow/10 rounded-3xl p-6 flex flex-col justify-between h-[200px]">
+          <button
+            type="button"
+            onClick={() => navigate('/admin/operations')}
+            className="w-full text-left bg-yellow/10 rounded-3xl p-6 flex flex-col justify-between h-[200px] transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-yellow-400"
+          >
             <div className="flex justify-between items-start">
               <div>
                 <h3 className="text-gray-600 font-medium mb-1">Total Students</h3>
                 <div className="text-4xl font-bold text-gray-900">{metrics.total_students.toLocaleString()}</div>
+                <div className="text-xs text-gray-500 mt-2 space-y-0.5">
+                  <p>
+                    <span className="font-semibold text-gray-900">{metrics.survey_filled_count}</span> completed survey
+                  </p>
+                  <p>
+                    <span className="font-semibold text-gray-900">{metrics.survey_not_filled_count}</span> not yet completed
+                  </p>
+                </div>
               </div>
               <div className="p-2 bg-white/50 rounded-full">
                 <Users className="w-5 h-5 text-gray-400" />
@@ -95,13 +182,17 @@ const AdminDashboard: React.FC = () => {
                   <div className="bg-yellow h-full rounded-full" style={{ width: `${(metrics.paid_count / metrics.total_students) * 100}%` }}></div>
                </div>
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
       {/* Middle Section: Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className="bg-purple-50 rounded-3xl p-6">
+        <button
+          type="button"
+          onClick={() => navigate('/admin/content')}
+          className="bg-purple-50 rounded-3xl p-6 text-left transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-purple-400"
+        >
           <div className="flex justify-between items-start mb-4">
             <h3 className="text-gray-600 font-medium">Course Modules</h3>
             <div className="p-2 bg-white/50 rounded-full">
@@ -110,9 +201,13 @@ const AdminDashboard: React.FC = () => {
           </div>
           <div className="text-4xl font-bold text-gray-900 mb-2">{modules.length}</div>
           <div className="text-sm text-purple-600 font-medium">Active Content</div>
-        </div>
+        </button>
 
-        <div className="bg-green-50 rounded-3xl p-6">
+        <button
+          type="button"
+          onClick={() => navigate('/admin/operations')}
+          className="bg-green-50 rounded-3xl p-6 text-left transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-green-400"
+        >
           <div className="flex justify-between items-start mb-4">
              <h3 className="text-gray-600 font-medium">Resumes</h3>
              <div className="p-2 bg-white/50 rounded-full">
@@ -123,7 +218,7 @@ const AdminDashboard: React.FC = () => {
           <div className="text-sm text-green-600 font-medium">
              {metrics.onboarding_percentage}% Submission Rate
           </div>
-        </div>
+        </button>
         
         {/* Notice Board / Announcements */}
         <div className="lg:col-span-2 bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
@@ -191,7 +286,11 @@ const AdminDashboard: React.FC = () => {
             <AlertCircle className="w-5 h-5 text-red-400" />
           </div>
           <div className="space-y-4">
-             <div className="flex gap-3 items-center p-3 rounded-xl bg-red-50 border border-red-100">
+             <button
+               type="button"
+               onClick={() => navigate('/admin/operations')}
+               className="w-full flex gap-3 items-center p-3 rounded-xl bg-red-50 border border-red-100 text-left transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-red-400"
+             >
                 <div className="p-2 bg-white rounded-full shrink-0">
                   <DollarSign className="w-4 h-4 text-red-500" />
                 </div>
@@ -199,9 +298,13 @@ const AdminDashboard: React.FC = () => {
                    <h4 className="font-bold text-sm text-gray-900">{metrics.unpaid_count} Pending Payments</h4>
                    <p className="text-xs text-red-600">Review unpaid students</p>
                 </div>
-             </div>
+             </button>
              
-             <div className="flex gap-3 items-center p-3 rounded-xl bg-yellow/10 border border-yellow/20">
+             <button
+               type="button"
+               onClick={() => navigate('/admin/operations')}
+               className="w-full flex gap-3 items-center p-3 rounded-xl bg-yellow/10 border border-yellow/20 text-left transition-shadow hover:shadow-md focus:outline-none focus:ring-2 focus:ring-yellow-400"
+             >
                 <div className="p-2 bg-white rounded-full shrink-0">
                   <FileText className="w-4 h-4 text-yellow-600" />
                 </div>
@@ -209,7 +312,7 @@ const AdminDashboard: React.FC = () => {
                    <h4 className="font-bold text-sm text-gray-900">{metrics.total_students - metrics.has_resume_count} Missing Resumes</h4>
                    <p className="text-xs text-yellow-700">Send reminders</p>
                 </div>
-             </div>
+             </button>
 
              <div className="flex gap-3 items-center p-3 rounded-xl bg-green-50 border border-green-100">
                 <div className="p-2 bg-white rounded-full shrink-0">

@@ -15,5 +15,10 @@ serviceAccountKey.json
 firebase-adminsdk-*.json
 *.log
 
-service_account.json
-
+# Debug and temporary files
+*debug*.txt
+output.txt
+arraydebug.txt
+*.xlsx
+*.xls
+*.csv

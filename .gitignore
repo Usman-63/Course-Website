@@ -48,6 +48,10 @@ backend/.pytest_cache/
 coverage/
 htmlcov/
 
-# Trae/Cursor artifacts
-.trae/
-.cursor/
+# Debug and temporary files
+backend/*debug*.txt
+backend/output.txt
+backend/arraydebug.txt
+backend/*.xlsx
+backend/*.xls
+backend/*.csv

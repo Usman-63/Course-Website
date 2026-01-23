@@ -9,6 +9,7 @@ interface StudentEditSheetProps {
   student: StudentOperations | null;
   onSave: (email: string, updates: Partial<StudentOperations>) => Promise<void>;
   totalLabs: number;
+  classMap: Map<string, string>; // Map class ID to topic
 }
 
 const StudentEditSheet: React.FC<StudentEditSheetProps> = ({ 
@@ -16,13 +17,17 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
   onClose, 
   student, 
   onSave, 
-  totalLabs 
+  totalLabs,
+  classMap
 }) => {
   const [formData, setFormData] = useState<Partial<StudentOperations>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [lastStudentEmail, setLastStudentEmail] = useState<string | null>(null);
 
   useEffect(() => {
-    if (student) {
+    // Only reset formData when opening with a different student
+    const currentEmail = student?.['Email Address'];
+    if (student && currentEmail && currentEmail !== lastStudentEmail) {
       // Parse attendance if it's a string
       let attendance = student.Attendance;
       if (typeof attendance === 'string') {
@@ -44,8 +49,10 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
           ])
         )
       });
+      
+      setLastStudentEmail(currentEmail);
     }
-  }, [student, totalLabs]);
+  }, [student, totalLabs, lastStudentEmail]);
 
   const handleSave = async () => {
     if (!student?.['Email Address']) return;
@@ -53,9 +60,12 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
     setIsSaving(true);
     try {
       await onSave(student['Email Address'], formData);
+      // Reset lastStudentEmail so formData resets on next open
+      setLastStudentEmail(null);
       onClose();
     } catch (error) {
       console.error('Failed to save:', error);
+      // Don't reset lastStudentEmail on error so user can retry
     } finally {
       setIsSaving(false);
     }
@@ -163,12 +173,13 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             {Object.keys((formData.Attendance as Record<string, boolean>) || {}).length > 0 ? (
-                              Object.keys((formData.Attendance as Record<string, boolean>)).map((className) => {
-                                const isPresent = (formData.Attendance as Record<string, boolean>)[className];
+                              Object.keys((formData.Attendance as Record<string, boolean>)).map((classId) => {
+                                const isPresent = (formData.Attendance as Record<string, boolean>)[classId];
+                                const classTopic = classMap.get(classId) || classId; // Use topic if available, fallback to ID
                                 return (
                                   <div 
-                                    key={className}
-                                    onClick={() => toggleAttendance(className)}
+                                    key={classId}
+                                    onClick={() => toggleAttendance(classId)}
                                     className={`
                                       flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-all
                                       ${isPresent 
@@ -178,7 +189,7 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                                     `}
                                   >
                                     <span className={`text-sm font-medium ${isPresent ? 'text-green-700' : 'text-gray-600'}`}>
-                                      {className}
+                                      {classTopic}
                                     </span>
                                     {isPresent ? (
                                       <CheckSquare className="w-5 h-5 text-green-600" />

@@ -17,6 +17,7 @@ import {
 import { useToast } from '../Toast';
 import StudentEditSheet from './StudentEditSheet';
 import AttendanceManager from './AttendanceManager';
+import { classService } from '../../services/classService';
 
 const StudentOperationsManager: React.FC = () => {
   const toast = useToast();
@@ -39,14 +40,30 @@ const StudentOperationsManager: React.FC = () => {
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
   const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['Student', 'Payment', 'Attendance', 'Grades', 'Actions']));
-  const [showDebug, setShowDebug] = useState(false);
   const columnSelectorRef = useRef<HTMLDivElement>(null);
+  const [isForceRefreshing, setIsForceRefreshing] = useState(false);
+  const [classMap, setClassMap] = useState<Map<string, string>>(new Map()); // Map class ID to topic
 
-  // Load course data only once on mount
+  // Load course data and classes only once on mount
   useEffect(() => {
     loadCourseData();
     loadColumnPreferences();
+    loadClasses();
   }, []);
+
+  const loadClasses = async () => {
+    try {
+      const data = await classService.getAll();
+      // Create a map from class ID to topic for quick lookup
+      const map = new Map<string, string>();
+      data.forEach(cls => {
+        map.set(cls.id, cls.topic);
+      });
+      setClassMap(map);
+    } catch (error) {
+      console.error('Failed to load classes:', error);
+    }
+  };
 
   // Extract available columns from student data
   useEffect(() => {
@@ -155,10 +172,12 @@ const StudentOperationsManager: React.FC = () => {
 
   // Load data with debouncing to prevent duplicate requests
   const loadData = useCallback(async (forceRefresh = false) => {
-    // Prevent duplicate concurrent calls
-    if (loadingRef.current) {
-      console.log('Load already in progress, skipping duplicate call');
-      return;
+    // If force refresh, skip the debounce and loading check
+    if (!forceRefresh) {
+      // Prevent duplicate concurrent calls
+      if (loadingRef.current) {
+        return;
+      }
     }
     
     try {
@@ -166,7 +185,7 @@ const StudentOperationsManager: React.FC = () => {
       setLoading(true);
       
       // Single API call instead of 3 parallel calls - much more efficient!
-      const res = await getStudentsOperationsCombined(sortBy, sortOrder, typeof forceRefresh === 'boolean' ? forceRefresh : false);
+      const res = await getStudentsOperationsCombined(sortBy, sortOrder, forceRefresh);
       
       setStudents(res.students || []);
       setMetrics(res.metrics || null);
@@ -191,12 +210,32 @@ const StudentOperationsManager: React.FC = () => {
     return () => clearTimeout(timeoutId);
   }, [loadData]); // Depend on loadData which already depends on sortBy/sortOrder
 
+  const handleForceRefreshFromResponses = async () => {
+    try {
+      setIsForceRefreshing(true);
+      toast.info('Refreshing data from Google Form responses. This can take 10–30 seconds on first load.');
+      await loadData(true);
+      toast.success('Student data refreshed from latest form responses.');
+    } catch (err: any) {
+      console.error('Failed to refresh from responses:', err);
+      toast.error(err?.message || 'Failed to refresh from responses');
+    } finally {
+      setIsForceRefreshing(false);
+    }
+  };
+
   const handleUpdateStudent = async (email: string, updates: Partial<StudentOperations>) => {
     try {
       await updateStudentOperations(email, updates);
       toast.success('Student data updated successfully');
-      loadData();
-      // Keep sheet open or close it? Usually close it on success
+      
+      // Force refresh immediately without debounce to get latest data
+      // Clear the loading ref to allow immediate refresh
+      loadingRef.current = false;
+      await loadData(true); // Force refresh to bypass cache
+      
+      // Close the sheet after successful update
+      // The students list will be updated, so next time user opens edit sheet, they'll see fresh data
       setIsEditSheetOpen(false);
       setSelectedStudent(null);
     } catch (error: any) {
@@ -207,7 +246,10 @@ const StudentOperationsManager: React.FC = () => {
   };
 
   const handleEditClick = (student: StudentOperations) => {
-    setSelectedStudent(student);
+    // Find the student from the current students array to ensure we have the latest data
+    const email = student['Email Address'];
+    const currentStudent = students.find(s => s['Email Address'] === email) || student;
+    setSelectedStudent(currentStudent);
     setIsEditSheetOpen(true);
   };
 
@@ -497,12 +539,6 @@ const StudentOperationsManager: React.FC = () => {
 
         {viewMode === 'list' && (
         <div className="flex gap-2">
-          <button
-            onClick={() => setShowDebug(!showDebug)}
-            className={`px-4 py-2 rounded-lg font-semibold border transition-colors ${showDebug ? 'bg-gray-900 text-white border-gray-900' : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
-          >
-            Debug
-          </button>
           <div className="relative" ref={columnSelectorRef}>
             <button
               onClick={() => setShowColumnSelector(!showColumnSelector)}
@@ -570,14 +606,19 @@ const StudentOperationsManager: React.FC = () => {
             )}
           </div>
           <button
-            onClick={() => loadData(true)}
-            className="bg-white border border-gray-200 text-gray-600 px-5 py-2.5 rounded-xl font-semibold hover:bg-gray-50 transition-all flex items-center gap-2 shadow-sm"
+            onClick={handleForceRefreshFromResponses}
+            disabled={isForceRefreshing}
+            title="Force a full refresh from Google Sheets (Register + Survey). Use this after new form responses are submitted."
+            className={`bg-white border border-gray-200 text-gray-600 px-5 py-2.5 rounded-xl font-semibold transition-all flex items-center gap-2 shadow-sm ${
+              isForceRefreshing ? 'opacity-70 cursor-not-allowed' : 'hover:bg-gray-50'
+            }`}
           >
-            <RefreshCw className="w-4 h-4" />
-            Get Data from Responses
+            <RefreshCw className={`w-4 h-4 ${isForceRefreshing ? 'animate-spin' : ''}`} />
+            <span>{isForceRefreshing ? 'Refreshing from responses…' : 'Get Data from Responses'}</span>
           </button>
           <button
             onClick={handleCopyEmails}
+            title="Copy the current list of student emails to your clipboard."
             className="bg-yellow text-white px-5 py-2.5 rounded-xl font-bold hover:bg-yellow-hover transition-all flex items-center gap-2 shadow-lg shadow-yellow/20"
           >
             <Mail className="w-4 h-4" />
@@ -591,32 +632,6 @@ const StudentOperationsManager: React.FC = () => {
         <AttendanceManager students={students} onUpdate={loadData} />
       ) : (
         <>
-
-
-
-      {/* Debug View */}
-      {showDebug && (
-        <div className="bg-gray-900 text-green-400 p-6 rounded-xl overflow-x-auto font-mono text-xs shadow-2xl border border-gray-800">
-          <h4 className="text-white font-bold text-lg mb-4 border-b border-gray-800 pb-2">Debug Data Inspection</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <h5 className="text-white font-semibold mb-2">Raw Student Data (First 2 Records)</h5>
-              <pre>{JSON.stringify(students.slice(0, 2), null, 2)}</pre>
-            </div>
-            <div>
-              <h5 className="text-white font-semibold mb-2">Available Columns Detected</h5>
-              <div className="flex flex-wrap gap-2 mb-4">
-                {availableColumns.map(col => (
-                  <span key={col} className="bg-gray-800 px-2 py-1 rounded text-gray-300">{col}</span>
-                ))}
-              </div>
-              <h5 className="text-white font-semibold mb-2">Metrics Data</h5>
-              <pre>{JSON.stringify(metrics, null, 2)}</pre>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Metrics View */}
       {metrics && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -748,9 +763,10 @@ const StudentOperationsManager: React.FC = () => {
               setIsEditSheetOpen(false);
               setSelectedStudent(null);
             }}
-            student={selectedStudent}
+            student={selectedStudent ? students.find(s => s['Email Address'] === selectedStudent['Email Address']) || selectedStudent : null}
             onSave={handleUpdateStudent}
             totalLabs={totalLabs}
+            classMap={classMap}
           />
         </>
       )}
