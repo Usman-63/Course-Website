@@ -416,10 +416,15 @@ def merge_with_admin_logs(
         final["Name"] = final["Name_admin"]
 
     # Coalesce Payment Status
-    # Priority: 1) Admin-set paymentStatus, 2) Screenshot-based status from Register, 3) Default to Unpaid
+    # Priority: 1) Admin-set paymentStatus from Firestore, 2) Screenshot-based status from Register, 3) Default to Unpaid
     if "Payment Status_admin" in final.columns:
-        # Admin-set payment status takes priority
-        final["Payment Status"] = final["Payment Status_admin"].fillna(final.get("Payment Status", "Unpaid"))
+        # Admin-set payment status takes priority - use it if not null, otherwise fall back to Register status
+        # combine_first uses the first non-null value, so admin status takes priority
+        final["Payment Status"] = final["Payment Status_admin"].combine_first(
+            final.get("Payment Status", pd.Series(index=final.index, dtype=object))
+        )
+        # Fill any remaining NaN with "Unpaid"
+        final["Payment Status"] = final["Payment Status"].fillna("Unpaid")
     elif "Payment Status" not in final.columns:
         final["Payment Status"] = "Unpaid"
     else:

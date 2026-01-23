@@ -471,6 +471,14 @@ class GoogleSheetsManager:
                 # Teacher Evaluation (always include, even if empty)
                 row['Teacher Evaluation'] = student_data.get('teacherEvaluation', '')
                 
+                # Payment Status (admin-set, takes priority)
+                if 'paymentStatus' in student_data:
+                    row['Payment Status'] = student_data['paymentStatus']
+                
+                # Payment Comment
+                if 'paymentComment' in student_data:
+                    row['Payment Comment'] = student_data['paymentComment']
+                
                 # Payment Screenshot
                 if 'paymentScreenshot' in student_data:
                     row['Payment Screenshot'] = student_data['paymentScreenshot']
