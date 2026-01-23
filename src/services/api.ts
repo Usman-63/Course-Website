@@ -404,6 +404,7 @@ export interface OperationsMetrics {
   onboarding_percentage: number;
   survey_filled_count: number;
   survey_not_filled_count: number;
+  last_synced?: string;
 }
 
 export interface OperationsStatus {
