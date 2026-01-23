@@ -211,7 +211,7 @@ def get_allowed_assignment_fields(total_labs: int) -> List[str]:
     Returns:
         List of allowed field names (Name, Attendance, Teacher Evaluation, Assignment grades)
     """
-    allowed_fields = ['Name', 'Student Name', 'Attendance', 'Teacher Evaluation']
+    allowed_fields = ['Name', 'Student Name', 'Attendance', 'Teacher Evaluation', 'Payment Status', 'Payment Comment']
     for i in range(total_labs):
         allowed_fields.append(f'Assignment {i+1} Grade')
     return allowed_fields

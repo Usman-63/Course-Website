@@ -1,6 +1,6 @@
 import React, { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
-import { X, Save, CheckSquare, Square, AlertCircle, Loader2, TrendingUp, FileText, Users } from 'lucide-react';
+import { X, Save, CheckSquare, Square, AlertCircle, Loader2, TrendingUp, FileText, Users, DollarSign, MessageSquare } from 'lucide-react';
 import { StudentOperations } from '../../services/api';
 
 interface StudentEditSheetProps {
@@ -42,6 +42,8 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
         Name: student.Name || student['Student Name'] || student['Student Full Name'] || '',
         Attendance: attendance || {},
         'Teacher Evaluation': student['Teacher Evaluation'] || '',
+        'Payment Status': student['Payment Status'] || '',
+        'Payment Comment': student['Payment Comment'] || '',
         ...Object.fromEntries(
           Array.from({ length: totalLabs }, (_, i) => [
             `Assignment ${i + 1} Grade`,
@@ -235,6 +237,42 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                                 </div>
                               );
                             })}
+                          </div>
+                        </div>
+                      </section>
+
+                      {/* Section: Payment Status */}
+                      <section>
+                        <h3 className="text-lg font-medium text-gray-900 mb-4 flex items-center gap-2">
+                          <DollarSign className="text-yellow-600 w-5 h-5" />
+                          Payment Status
+                        </h3>
+                        <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-4">
+                          <div>
+                            <label className="block text-gray-600 text-sm font-medium mb-1.5">
+                              Payment Status
+                            </label>
+                            <select
+                              value={formData['Payment Status'] || ''}
+                              onChange={(e) => setFormData({ ...formData, 'Payment Status': e.target.value })}
+                              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
+                            >
+                              <option value="">-- Select Status --</option>
+                              <option value="Paid">Paid</option>
+                              <option value="Unpaid">Unpaid</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-gray-600 text-sm font-medium mb-1.5 flex items-center gap-2">
+                              <MessageSquare className="w-4 h-4" />
+                              Payment Comment
+                            </label>
+                            <textarea
+                              value={formData['Payment Comment'] || ''}
+                              onChange={(e) => setFormData({ ...formData, 'Payment Comment': e.target.value })}
+                              className="w-full px-4 py-3 bg-white border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all min-h-[100px] leading-relaxed"
+                              placeholder="Add notes about payment status, reason for change, etc..."
+                            />
                           </div>
                         </div>
                       </section>

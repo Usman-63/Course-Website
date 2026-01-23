@@ -389,6 +389,7 @@ export interface StudentOperations {
   'Parent Name'?: string;
   Referrer?: string;
   'Payment Status'?: string;
+  'Payment Comment'?: string;
   Attendance?: Record<string, boolean> | string;
   'Assignment 1 Grade'?: string;
   'Assignment 2 Grade'?: string;

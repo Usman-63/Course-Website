@@ -628,6 +628,17 @@ class GoogleSheetsManager:
                                     screenshot_val = student_row.iloc[0].get('Add Payment Screenshot')
                                     if pd.notna(screenshot_val) and str(screenshot_val).strip():
                                         initial_data['paymentScreenshot'] = str(screenshot_val)
+                                
+                                # Extract Payment proved status if available (yes/no -> Paid/Unpaid)
+                                payment_proved_cols = [c for c in student_row.columns if 'payment' in str(c).lower() and 'proved' in str(c).lower()]
+                                if payment_proved_cols:
+                                    payment_proved_val = str(student_row.iloc[0].get(payment_proved_cols[0], "")).strip().lower()
+                                    if payment_proved_val and payment_proved_val != 'nan':
+                                        if payment_proved_val == 'yes':
+                                            initial_data['paymentStatus'] = 'Paid'
+                                        elif payment_proved_val == 'no':
+                                            initial_data['paymentStatus'] = 'Unpaid'
+                                
                                 # Extract resume link if available
                                 resume_cols = [c for c in student_row.columns if 'resume' in str(c).lower()]
                                 if resume_cols:
@@ -778,6 +789,16 @@ class GoogleSheetsManager:
                 )
                 if payment_screenshot and str(payment_screenshot).strip() and str(payment_screenshot).lower() != 'nan':
                     initial_data['paymentScreenshot'] = str(payment_screenshot).strip()
+                
+                # Extract Payment proved status if available (yes/no -> Paid/Unpaid)
+                payment_proved_cols = [k for k in student_data.keys() if 'payment' in str(k).lower() and 'proved' in str(k).lower()]
+                if payment_proved_cols:
+                    payment_proved_val = str(student_data.get(payment_proved_cols[0], "")).strip().lower()
+                    if payment_proved_val and payment_proved_val != 'nan':
+                        if payment_proved_val == 'yes':
+                            initial_data['paymentStatus'] = 'Paid'
+                        elif payment_proved_val == 'no':
+                            initial_data['paymentStatus'] = 'Unpaid'
                 
                 # Extract resume link if available
                 resume_link = (
@@ -1178,6 +1199,16 @@ class GoogleSheetsManager:
                 )
                 if payment_screenshot and pd.notna(payment_screenshot) and str(payment_screenshot).strip() and str(payment_screenshot).lower() != 'nan':
                     initial_data['paymentScreenshot'] = str(payment_screenshot).strip()
+                
+                # Extract Payment proved status if available (yes/no -> Paid/Unpaid)
+                payment_proved_cols = [k for k in student_dict.keys() if 'payment' in str(k).lower() and 'proved' in str(k).lower()]
+                if payment_proved_cols:
+                    payment_proved_val = str(student_dict.get(payment_proved_cols[0], "")).strip().lower()
+                    if payment_proved_val and payment_proved_val != 'nan':
+                        if payment_proved_val == 'yes':
+                            initial_data['paymentStatus'] = 'Paid'
+                        elif payment_proved_val == 'no':
+                            initial_data['paymentStatus'] = 'Unpaid'
                 
                 # Extract resume link
                 resume_link = (

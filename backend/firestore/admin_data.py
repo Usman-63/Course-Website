@@ -535,6 +535,10 @@ def update_admin_student(email: str, updates: Dict[str, Any]) -> bool:
             "resumeLink": "resumeLink",
             "Name": "name",
             "name": "name",
+            "Payment Status": "paymentStatus",
+            "paymentStatus": "paymentStatus",
+            "Payment Comment": "paymentComment",
+            "paymentComment": "paymentComment",
         }
 
         for key, firestore_key in field_mapping.items():
@@ -718,6 +722,10 @@ def bulk_update_admin_students(updates: List[Dict[str, Any]], course_module_stru
                     "teacherEvaluation": "teacherEvaluation",
                     "Payment Screenshot": "paymentScreenshot",
                     "paymentScreenshot": "paymentScreenshot",
+                    "Payment Status": "paymentStatus",
+                    "paymentStatus": "paymentStatus",
+                    "Payment Comment": "paymentComment",
+                    "paymentComment": "paymentComment",
                     "Resume Link": "resumeLink",
                     "resumeLink": "resumeLink",
                     "Name": "name",
@@ -781,17 +789,20 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
         import pandas as pd
 
         # Find Register columns
-        payment_col = None
+        payment_screenshot_col = None
+        payment_proved_col = None
         resume_col = None
 
         for col in register_df.columns:
             col_lower = str(col).lower()
             if "payment" in col_lower and "screenshot" in col_lower:
-                payment_col = col
+                payment_screenshot_col = col
+            elif "payment" in col_lower and "proved" in col_lower:
+                payment_proved_col = col
             if "resume" in col_lower and ("upload" in col_lower or "link" in col_lower):
                 resume_col = col
 
-        if not payment_col and not resume_col:
+        if not payment_screenshot_col and not payment_proved_col and not resume_col:
             logger.debug("No payment/resume columns found in Register")
             return True
 
@@ -821,9 +832,22 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
             update_needed = False
             update_data: Dict[str, Any] = {"email": email_normalized}
 
+            # Check Payment proved column (yes/no -> Paid/Unpaid)
+            # Only set if admin hasn't already set a payment status
+            if payment_proved_col and not student_data.get("paymentStatus"):
+                payment_proved_val = str(row.get(payment_proved_col, "")).strip().lower()
+                if payment_proved_val and payment_proved_val != "nan":
+                    # Map yes/no to Paid/Unpaid
+                    if payment_proved_val == "yes":
+                        update_data["paymentStatus"] = "Paid"
+                        update_needed = True
+                    elif payment_proved_val == "no":
+                        update_data["paymentStatus"] = "Unpaid"
+                        update_needed = True
+
             # Check payment screenshot
-            if payment_col:
-                payment_val = str(row.get(payment_col, "")).strip()
+            if payment_screenshot_col:
+                payment_val = str(row.get(payment_screenshot_col, "")).strip()
                 if payment_val and payment_val.lower() != "nan":
                     if not student_data.get("paymentScreenshot"):
                         update_data["paymentScreenshot"] = payment_val

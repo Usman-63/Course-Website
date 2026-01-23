@@ -416,12 +416,20 @@ def merge_with_admin_logs(
         final["Name"] = final["Name_admin"]
 
     # Coalesce Payment Status
-    # If Payment Status is NaN (because not in Register), default to Unpaid,
-    # UNLESS admin data has a screenshot (we need to check for that column if we add it)
-    if "Payment Status" not in final.columns:
+    # Priority: 1) Admin-set paymentStatus, 2) Screenshot-based status from Register, 3) Default to Unpaid
+    if "Payment Status_admin" in final.columns:
+        # Admin-set payment status takes priority
+        final["Payment Status"] = final["Payment Status_admin"].fillna(final.get("Payment Status", "Unpaid"))
+    elif "Payment Status" not in final.columns:
         final["Payment Status"] = "Unpaid"
     else:
         final["Payment Status"] = final["Payment Status"].fillna("Unpaid")
+    
+    # Coalesce Payment Comment (from admin data)
+    if "Payment Comment_admin" in final.columns:
+        final["Payment Comment"] = final["Payment Comment_admin"].fillna("")
+    elif "Payment Comment" not in final.columns:
+        final["Payment Comment"] = ""
 
     # Coalesce Teacher Evaluation (prefer admin data)
     if "Teacher Evaluation" in final.columns and "Teacher Evaluation_admin" in final.columns:
@@ -448,6 +456,10 @@ def merge_with_admin_logs(
     # Remove duplicate columns from admin (keep original merged columns)
     columns_to_drop = [col for col in final.columns if col.endswith("_admin")]
     final = final.drop(columns=columns_to_drop, errors="ignore")
+    
+    # Ensure Payment Comment column exists (even if empty)
+    if "Payment Comment" not in final.columns:
+        final["Payment Comment"] = ""
 
     return final
 
