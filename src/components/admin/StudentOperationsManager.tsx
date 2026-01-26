@@ -1,75 +1,46 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { 
-  Users, Search, DollarSign, FileText, 
-  Mail, Loader2, AlertCircle, TrendingUp, RefreshCw, 
-  ArrowUpDown, ArrowUp, ArrowDown, Settings, X, CheckSquare, Square,
-  Calendar, List
+  Search, FileText, 
+  Mail, Loader2, RefreshCw, 
+  ArrowUpDown, ArrowUp, ArrowDown, Settings, X, CheckSquare, Square
 } from 'lucide-react';
 import { 
-  getStudentsOperationsCombined,
-  updateStudentOperations,
+  getRegisterStudents,
+  getSurveyStudents,
   getOperationsEmails,
-  getCourseData,
   StudentOperations,
-  OperationsMetrics,
-  OperationsStatus
 } from '../../services/api';
 import { useToast } from '../Toast';
-import StudentEditSheet from './StudentEditSheet';
-import AttendanceManager from './AttendanceManager';
-import { classService } from '../../services/classService';
 
 const StudentOperationsManager: React.FC = () => {
   const toast = useToast();
-  const [students, setStudents] = useState<StudentOperations[]>([]);
-  const [metrics, setMetrics] = useState<OperationsMetrics | null>(null);
-  const [status, setStatus] = useState<OperationsStatus | null>(null);
+  const [registerStudents, setRegisterStudents] = useState<StudentOperations[]>([]);
+  const [surveyStudents, setSurveyStudents] = useState<StudentOperations[]>([]);
+  const [activeTab, setActiveTab] = useState<'register' | 'survey'>('register');
   const [searchTerm, setSearchTerm] = useState('');
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<'list' | 'attendance'>('list');
-
-  // Edit Sheet State
-  const [isEditSheetOpen, setIsEditSheetOpen] = useState(false);
-  const [selectedStudent, setSelectedStudent] = useState<StudentOperations | null>(null);
   
   // Sort and Filter state
   const [sortBy, setSortBy] = useState<'name' | 'email' | 'payment' | 'timestamp'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [totalLabs, setTotalLabs] = useState<number>(2);
   const loadingRef = useRef(false); 
   const [showColumnSelector, setShowColumnSelector] = useState(false);
   const [availableColumns, setAvailableColumns] = useState<string[]>([]);
-  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set(['Student', 'Payment', 'Attendance', 'Grades', 'Actions']));
+  const [visibleColumns, setVisibleColumns] = useState<Set<string>>(new Set());
   const columnSelectorRef = useRef<HTMLDivElement>(null);
   const [isForceRefreshing, setIsForceRefreshing] = useState(false);
-  const [classMap, setClassMap] = useState<Map<string, string>>(new Map()); // Map class ID to topic
 
-  // Load course data and classes only once on mount
+  // Load column preferences when tab changes
   useEffect(() => {
-    loadCourseData();
     loadColumnPreferences();
-    loadClasses();
-  }, []);
-
-  const loadClasses = async () => {
-    try {
-      const data = await classService.getAll();
-      // Create a map from class ID to topic for quick lookup
-      const map = new Map<string, string>();
-      data.forEach(cls => {
-        map.set(cls.id, cls.topic);
-      });
-      setClassMap(map);
-    } catch (error) {
-      console.error('Failed to load classes:', error);
-    }
-  };
+  }, [activeTab]);
 
   // Extract available columns from student data
   useEffect(() => {
-    if (students.length > 0) {
+    const currentStudents = activeTab === 'register' ? registerStudents : surveyStudents;
+    if (currentStudents.length > 0) {
       const allColumns = new Set<string>();
-      students.forEach(student => {
+      currentStudents.forEach(student => {
         Object.keys(student).forEach(key => {
           // Exclude internal/private fields and complex objects
           if (!key.startsWith('_') && key !== 'Attendance') {
@@ -78,37 +49,54 @@ const StudentOperationsManager: React.FC = () => {
         });
       });
       
-      // Add standard columns that are always available
-      const standardColumns = ['Student', 'Payment', 'Attendance', 'Grades', 'Actions'];
-      standardColumns.forEach(col => allColumns.add(col));
-      
-      // Add assignment grade columns dynamically
-      for (let i = 1; i <= totalLabs; i++) {
-        allColumns.add(`Assignment ${i} Grade`);
+      // Add standard columns based on active tab
+      if (activeTab === 'register') {
+        allColumns.add('Student');
+        allColumns.add('Payment');
+        allColumns.add('Onboarding');
+        allColumns.add('Module 1');
+      } else {
+        allColumns.add('Student Full Name');
+        allColumns.add('Resume');
       }
       
       const sortedColumns = Array.from(allColumns).sort();
       setAvailableColumns(sortedColumns);
     }
-  }, [students, totalLabs]);
+  }, [registerStudents, surveyStudents, activeTab]);
 
-  // Load column preferences from localStorage
+  // Load column preferences from localStorage (tab-specific)
   const loadColumnPreferences = () => {
     try {
-      const saved = localStorage.getItem('student_operations_visible_columns');
+      const key = `student_operations_visible_columns_${activeTab}`;
+      const saved = localStorage.getItem(key);
       if (saved) {
         const columns = JSON.parse(saved);
         setVisibleColumns(new Set(columns));
+      } else {
+        // Set default columns if no saved preferences
+        if (activeTab === 'register') {
+          setVisibleColumns(new Set(['Student', 'Payment', 'Onboarding', 'Module 1']));
+        } else {
+          setVisibleColumns(new Set(['Student Full Name', 'Resume']));
+        }
       }
     } catch (error) {
       console.error('Failed to load column preferences:', error);
+      // Set defaults on error
+      if (activeTab === 'register') {
+        setVisibleColumns(new Set(['Student', 'Payment', 'Onboarding', 'Module 1']));
+      } else {
+        setVisibleColumns(new Set(['Student Full Name', 'Resume']));
+      }
     }
   };
 
-  // Save column preferences to localStorage
+  // Save column preferences to localStorage (tab-specific)
   const saveColumnPreferences = (columns: Set<string>) => {
     try {
-      localStorage.setItem('student_operations_visible_columns', JSON.stringify(Array.from(columns)));
+      const key = `student_operations_visible_columns_${activeTab}`;
+      localStorage.setItem(key, JSON.stringify(Array.from(columns)));
     } catch (error) {
       console.error('Failed to save column preferences:', error);
     }
@@ -129,15 +117,13 @@ const StudentOperationsManager: React.FC = () => {
   // Select all columns
   const selectAllColumns = () => {
     const newVisible = new Set(availableColumns);
-    // Always keep Actions column
-    newVisible.add('Actions');
     setVisibleColumns(newVisible);
     saveColumnPreferences(newVisible);
   };
 
-  // Deselect all columns (except Actions)
+  // Deselect all columns
   const deselectAllColumns = () => {
-    const newVisible = new Set(['Actions']);
+    const newVisible = new Set<string>();
     setVisibleColumns(newVisible);
     saveColumnPreferences(newVisible);
   };
@@ -156,40 +142,25 @@ const StudentOperationsManager: React.FC = () => {
     }
   }, [showColumnSelector]);
 
-  const loadCourseData = async () => {
-    try {
-      const courseData = await getCourseData();
-      if (courseData?.modules) {
-        const labs = courseData.modules.reduce((sum: number, module: any) => {
-          return sum + (module.labCount || 1);
-        }, 0);
-        setTotalLabs(labs || 2);
-      }
-    } catch (error) {
-      console.error('Failed to load course data:', error);
-    }
-  };
-
   // Load data with debouncing to prevent duplicate requests
   const loadData = useCallback(async (forceRefresh = false) => {
-    // If force refresh, skip the debounce and loading check
-    if (!forceRefresh) {
-      // Prevent duplicate concurrent calls
-      if (loadingRef.current) {
-        return;
-      }
+    // Prevent duplicate concurrent calls
+    if (!forceRefresh && loadingRef.current) {
+      return;
     }
     
     try {
       loadingRef.current = true;
       setLoading(true);
       
-      // Single API call instead of 3 parallel calls - much more efficient!
-      const res = await getStudentsOperationsCombined(sortBy, sortOrder, forceRefresh);
+      // Load both Register and Survey data separately (no backend sorting needed, we sort on frontend)
+      const [registerRes, surveyRes] = await Promise.all([
+        getRegisterStudents('name', 'asc', forceRefresh),
+        getSurveyStudents('name', 'asc', forceRefresh),
+      ]);
       
-      setStudents(res.students || []);
-      setMetrics(res.metrics || null);
-      setStatus(res.status || null);
+      setRegisterStudents(registerRes.students || []);
+      setSurveyStudents(surveyRes.students || []);
     } catch (error: any) {
       console.error('Failed to load operations data:', error);
       toast.error(error.message || 'Failed to load student operations data');
@@ -197,7 +168,7 @@ const StudentOperationsManager: React.FC = () => {
       setLoading(false);
       loadingRef.current = false;
     }
-  }, [sortBy, sortOrder, toast]);
+  }, [toast]);
 
   // Debounce loadData to prevent rapid successive calls
   useEffect(() => {
@@ -224,35 +195,6 @@ const StudentOperationsManager: React.FC = () => {
     }
   };
 
-  const handleUpdateStudent = async (email: string, updates: Partial<StudentOperations>) => {
-    try {
-      await updateStudentOperations(email, updates);
-      toast.success('Student data updated successfully');
-      
-      // Force refresh immediately without debounce to get latest data
-      // Clear the loading ref to allow immediate refresh
-      loadingRef.current = false;
-      await loadData(true); // Force refresh to bypass cache
-      
-      // Close the sheet after successful update
-      // The students list will be updated, so next time user opens edit sheet, they'll see fresh data
-      setIsEditSheetOpen(false);
-      setSelectedStudent(null);
-    } catch (error: any) {
-      console.error('Failed to update student:', error);
-      toast.error(error.message || 'Failed to update student data');
-      throw error; // Re-throw so the sheet knows it failed
-    }
-  };
-
-  const handleEditClick = (student: StudentOperations) => {
-    // Find the student from the current students array to ensure we have the latest data
-    const email = student['Email Address'];
-    const currentStudent = students.find(s => s['Email Address'] === email) || student;
-    setSelectedStudent(currentStudent);
-    setIsEditSheetOpen(true);
-  };
-
   const handleCopyEmails = async () => {
     try {
       const res = await getOperationsEmails();
@@ -265,21 +207,65 @@ const StudentOperationsManager: React.FC = () => {
   };
 
   const getStudentName = (student: StudentOperations): string => {
-    return student.Name || 
+    // For Register tab, combine First Name + Last Name
+    if (activeTab === 'register') {
+      const firstName = student['First Name'] || '';
+      const lastName = student['Last Name'] || '';
+      if (firstName || lastName) {
+        return `${firstName} ${lastName}`.trim();
+      }
+    }
+    
+    // For Survey tab or fallback, use Student Full Name or other name fields
+    return student['Student Full Name'] ||
+           student.Name || 
            student.name ||
-           student['Student Name'] ||
-           student['Student Full Name'] || 
-           (student['First Name'] && student['Last Name'] 
-             ? `${student['First Name']} ${student['Last Name']}` 
-             : student['First Name'] || student['Last Name'] || 'N/A');
+           student['Student Name'] || 
+           'N/A';
   };
 
-  const filteredStudents = students.filter(student => {
-    const email = student['Email Address'] || '';
-    const name = getStudentName(student);
-    const search = searchTerm.toLowerCase();
-    return email.toLowerCase().includes(search) || name.toLowerCase().includes(search);
-  });
+  const filteredStudents = (() => {
+    const students = activeTab === 'register' ? registerStudents : surveyStudents;
+    
+    // First filter by search term
+    const filtered = students.filter(student => {
+      const email = student['Email Address'] || '';
+      const name = getStudentName(student);
+      const search = searchTerm.toLowerCase();
+      return email.toLowerCase().includes(search) || name.toLowerCase().includes(search);
+    });
+    
+    // Then sort the filtered results
+    const sorted = [...filtered].sort((a, b) => {
+      let aValue: any = '';
+      let bValue: any = '';
+      
+      if (sortBy === 'name') {
+        aValue = getStudentName(a).toLowerCase();
+        bValue = getStudentName(b).toLowerCase();
+      } else if (sortBy === 'email') {
+        aValue = (a['Email Address'] || '').toLowerCase();
+        bValue = (b['Email Address'] || '').toLowerCase();
+      } else if (sortBy === 'payment') {
+        if (activeTab === 'register') {
+          aValue = (a['Payment proved'] || '').toString().toLowerCase();
+          bValue = (b['Payment proved'] || '').toString().toLowerCase();
+        } else {
+          return 0; // Payment sorting not applicable for Survey tab
+        }
+      } else if (sortBy === 'timestamp') {
+        aValue = a['Timestamp'] || a['timestamp'] || '';
+        bValue = b['Timestamp'] || b['timestamp'] || '';
+      }
+      
+      // Compare values
+      if (aValue < bValue) return sortOrder === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortOrder === 'asc' ? 1 : -1;
+      return 0;
+    });
+    
+    return sorted;
+  })();
 
   const handleSort = (field: 'name' | 'email' | 'payment' | 'timestamp') => {
     if (sortBy === field) {
@@ -299,45 +285,35 @@ const StudentOperationsManager: React.FC = () => {
       : <ArrowDown className="w-4 h-4 ml-1" />;
   };
 
-  const getPaymentStatusColor = (status?: string) => {
-    const s = (status || '').toLowerCase();
-    if (s === 'paid') return 'bg-green-500/20 text-green-400 border-green-500/30';
-    if (s === 'pending') return 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30';
-    return 'bg-red-500/20 text-red-400 border-red-500/30';
-  };
-
-  const parseAttendance = (attendance: Record<string, boolean> | string | undefined): Record<string, boolean> => {
-    if (!attendance) return {};
-    if (typeof attendance === 'string') {
-      try {
-        return JSON.parse(attendance);
-      } catch {
-        return {};
-      }
-    }
-    return attendance;
-  };
-
   // Get ordered list of visible columns (standard columns first, then others)
   const getVisibleColumnsOrdered = (): string[] => {
-    const standardOrder = ['Student', 'Payment', 'Attendance', 'Grades'];
     const visible = Array.from(visibleColumns);
     const ordered: string[] = [];
     
-    // Add standard columns in order if visible
-    standardOrder.forEach(col => {
-      if (visible.includes(col)) {
-        ordered.push(col);
-      }
-    });
-    
-    // Add other visible columns (excluding standard columns and Actions)
-    const otherColumns = visible.filter(col => !standardOrder.includes(col) && col !== 'Actions');
-    ordered.push(...otherColumns.sort());
-    
-    // Always add Actions last if visible
-    if (visible.includes('Actions')) {
-      ordered.push('Actions');
+    if (activeTab === 'register') {
+      // Register tab: Student, Payment, Onboarding, Module 1, then others
+      const standardOrder = ['Student', 'Payment', 'Onboarding', 'Module 1'];
+      standardOrder.forEach(col => {
+        if (visible.includes(col)) {
+          ordered.push(col);
+        }
+      });
+      
+      // Add other visible columns (excluding standard columns)
+      const otherColumns = visible.filter(col => !standardOrder.includes(col));
+      ordered.push(...otherColumns.sort());
+    } else {
+      // Survey tab: Student Full Name, Resume, then others
+      const standardOrder = ['Student Full Name', 'Resume'];
+      standardOrder.forEach(col => {
+        if (visible.includes(col)) {
+          ordered.push(col);
+        }
+      });
+      
+      // Add other visible columns (excluding standard columns)
+      const otherColumns = visible.filter(col => !standardOrder.includes(col));
+      ordered.push(...otherColumns.sort());
     }
     
     return ordered;
@@ -345,9 +321,9 @@ const StudentOperationsManager: React.FC = () => {
 
   // Render cell content based on column type
   const renderCell = (column: string, student: StudentOperations): React.ReactNode => {
-    if (column === 'Student') {
+    // Register tab: Student column (First Name + Last Name)
+    if (column === 'Student' && activeTab === 'register') {
       const email = student['Email Address'] || '';
-      const resumeLink = student['Resume Link'] || student['Upload your Resume / CV (PDF preferred)'];
       return (
         <div className="flex flex-col gap-1">
           <div className="font-bold text-gray-900 text-base">{getStudentName(student)}</div>
@@ -355,108 +331,75 @@ const StudentOperationsManager: React.FC = () => {
             <Mail className="w-3 h-3" />
             {email}
           </div>
-          {resumeLink && (
-            <a 
-              href={resumeLink} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-xs text-yellow-600 hover:text-yellow-700 hover:underline flex items-center gap-1 mt-1 w-fit"
-            >
-              <FileText className="w-3 h-3" />
-              View Resume
-            </a>
-          )}
         </div>
       );
     }
     
-    if (column === 'Payment') {
-      const status = student['Payment Status'] || 'Unpaid';
-      const colorClass = getPaymentStatusColor(status);
+    // Survey tab: Student Full Name column
+    if (column === 'Student Full Name' && activeTab === 'survey') {
+      const email = student['Email Address'] || '';
+      const fullName = student['Student Full Name'] || 'N/A';
       return (
-        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${colorClass}`}>
-          <div className={`w-1.5 h-1.5 rounded-full ${status.toLowerCase() === 'paid' ? 'bg-green-400' : 'bg-current'}`} />
-          {status}
+        <div className="flex flex-col gap-1">
+          <div className="font-bold text-gray-900 text-base">{fullName}</div>
+          <div className="text-sm text-gray-500 flex items-center gap-2">
+            <Mail className="w-3 h-3" />
+            {email}
+          </div>
+        </div>
+      );
+    }
+    
+    // Payment column: Show "Payment proved" (yes/no) for Register tab
+    if (column === 'Payment' && activeTab === 'register') {
+      const paymentProved = (student['Payment proved'] || '').toString().toLowerCase().trim();
+      let badgeText = 'Not Set';
+      let badgeColor = 'bg-gray-500/20 text-gray-400 border-gray-500/30';
+      
+      if (paymentProved === 'yes') {
+        badgeText = 'Yes';
+        badgeColor = 'bg-green-500/20 text-green-400 border-green-500/30';
+      } else if (paymentProved === 'no') {
+        badgeText = 'No';
+        badgeColor = 'bg-red-500/20 text-red-400 border-red-500/30';
+      }
+      
+      return (
+        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${badgeColor}`}>
+          <div className={`w-1.5 h-1.5 rounded-full ${paymentProved === 'yes' ? 'bg-green-400' : paymentProved === 'no' ? 'bg-red-400' : 'bg-gray-400'}`} />
+          {badgeText}
         </span>
       );
     }
     
-    if (column === 'Attendance') {
-      const attendance = parseAttendance(student.Attendance);
-      const attendanceCount = Object.values(attendance).filter(Boolean).length;
-      const totalClasses = Object.keys(attendance).length;
+    // Resume column: Show Uploaded/Not Uploaded badge for Survey tab
+    if (column === 'Resume' && activeTab === 'survey') {
+      // Use exact column name (check both with and without trailing spaces)
+      const resumeValue = student['Upload your Resume / CV (PDF preferred)  '] || 
+                         student['Upload your Resume / CV (PDF preferred)'] || '';
       
-      if (totalClasses === 0) return <span className="text-gray-600">-</span>;
-
-      const percentage = Math.round((attendanceCount / totalClasses) * 100);
-      const color = percentage >= 80 ? 'text-green-600' : percentage >= 50 ? 'text-yellow-600' : 'text-red-600';
+      // Check if resume exists
+      const resumeStr = resumeValue ? String(resumeValue).trim() : '';
+      const hasResume = resumeStr !== '' && 
+                       resumeStr.toLowerCase() !== 'n/a' &&
+                       resumeStr.toLowerCase() !== 'nan' &&
+                       resumeStr !== 'undefined' &&
+                       resumeStr !== 'null';
+      
+      const badgeText = hasResume ? 'Uploaded' : 'Not Uploaded';
+      const badgeColor = hasResume 
+        ? 'bg-green-500/20 text-green-400 border-green-500/30'
+        : 'bg-red-500/20 text-red-400 border-red-500/30';
       
       return (
-        <div className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <span className={`text-lg font-bold ${color}`}>{percentage}%</span>
-            <span className="text-xs text-gray-500">({attendanceCount}/{totalClasses})</span>
-          </div>
-          <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-            <div 
-              className={`h-full rounded-full ${percentage >= 80 ? 'bg-green-500' : percentage >= 50 ? 'bg-yellow-500' : 'bg-red-500'}`} 
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-        </div>
+        <span className={`px-3 py-1.5 rounded-full text-xs font-semibold border inline-flex items-center gap-1.5 ${badgeColor}`}>
+          <div className={`w-1.5 h-1.5 rounded-full ${hasResume ? 'bg-green-400' : 'bg-red-400'}`} />
+          {badgeText}
+        </span>
       );
     }
     
-    if (column === 'Grades') {
-      return (
-        <div className="flex flex-wrap gap-2 max-w-[200px]">
-          {Array.from({ length: totalLabs }, (_, i) => {
-            const assignmentNum = i + 1;
-            const gradeKey = `Assignment ${assignmentNum} Grade`;
-            const grade = student[gradeKey];
-            
-            if (!grade) return null;
-
-            return (
-              <div key={i} className="flex flex-col bg-gray-100 rounded px-2 py-1 border border-gray-200">
-                <span className="text-[10px] text-gray-500 uppercase tracking-wider">A{assignmentNum}</span>
-                <span className="text-sm font-mono font-bold text-gray-900">{grade}</span>
-              </div>
-            );
-          })}
-          {!Array.from({ length: totalLabs }).some((_, i) => student[`Assignment ${i + 1} Grade`]) && (
-             <span className="text-gray-600">-</span>
-          )}
-        </div>
-      );
-    }
-    
-    if (column === 'Actions') {
-      const hasEmail = !!student['Email Address'];
-      return (
-        <div className="relative group">
-          <button
-            onClick={() => handleEditClick(student)}
-            disabled={!hasEmail}
-            className={`p-2 rounded-lg transition-all ${
-              hasEmail 
-                ? 'text-gray-400 hover:text-gray-900 hover:bg-gray-100' 
-                : 'text-gray-300 cursor-not-allowed'
-            }`}
-            title={hasEmail ? "Edit Student" : "Email required for actions"}
-          >
-            <Settings className="w-5 h-5" />
-          </button>
-          {!hasEmail && (
-            <div className="absolute right-full mr-2 top-1/2 -translate-y-1/2 w-48 p-2 bg-gray-900 text-white text-xs rounded shadow-lg opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none z-50 text-center">
-              Set an email first before any actions can be performed.
-            </div>
-          )}
-        </div>
-      );
-    }
-    
-    // Generic column - display raw value
+    // Generic columns: Onboarding, Module 1, or any other form column
     const value = student[column];
     if (value === null || value === undefined || value === '') {
       return <span className="text-gray-400">-</span>;
@@ -476,14 +419,30 @@ const StudentOperationsManager: React.FC = () => {
     return (
       <tr className="bg-sky-50 text-gray-600 text-xs font-bold uppercase tracking-wider border-b border-gray-200">
         {columns.map((column) => {
-          const isSortable = column === 'Student' || column === 'Payment';
-          const sortField = column === 'Student' ? 'name' : column === 'Payment' ? 'payment' : null;
+          // Determine sortable columns based on active tab
+          let isSortable = false;
+          let sortField: 'name' | 'email' | 'payment' | 'timestamp' | null = null;
+          
+          if (activeTab === 'register') {
+            if (column === 'Student') {
+              isSortable = true;
+              sortField = 'name';
+            } else if (column === 'Payment') {
+              isSortable = true;
+              sortField = 'payment';
+            }
+          } else {
+            if (column === 'Student Full Name') {
+              isSortable = true;
+              sortField = 'name';
+            }
+          }
           
           return (
             <th
               key={column}
               className={`px-6 py-4 font-bold ${isSortable ? 'cursor-pointer hover:text-primary transition-colors group' : ''}`}
-              onClick={isSortable && sortField ? () => handleSort(sortField as 'name' | 'payment') : undefined}
+              onClick={isSortable && sortField ? () => handleSort(sortField) : undefined}
             >
               <div className="flex items-center gap-2">
                 {column}
@@ -500,7 +459,7 @@ const StudentOperationsManager: React.FC = () => {
     );
   };
 
-  if (loading && students.length === 0) {
+  if (loading && registerStudents.length === 0 && surveyStudents.length === 0) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="w-8 h-8 text-yellow animate-spin" />
@@ -510,34 +469,33 @@ const StudentOperationsManager: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div className="flex bg-gray-100 p-1 rounded-xl">
+      {/* Header with Tabs */}
+      <div className="flex flex-col gap-4">
+        <div className="flex bg-gray-100 p-1 rounded-xl w-fit">
           <button
-            onClick={() => setViewMode('list')}
-            className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all ${
-              viewMode === 'list' 
+            onClick={() => setActiveTab('register')}
+            className={`px-6 py-3 rounded-lg font-bold text-sm flex items-center gap-2 transition-all ${
+              activeTab === 'register' 
                 ? 'bg-white text-gray-900 shadow-sm' 
                 : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <List className="w-4 h-4" />
-            List View
+            <FileText className="w-4 h-4" />
+            Register Form ({registerStudents.length})
           </button>
           <button
-            onClick={() => setViewMode('attendance')}
-            className={`px-4 py-2 rounded-lg font-bold text-sm flex items-center gap-2 transition-all ${
-              viewMode === 'attendance' 
+            onClick={() => setActiveTab('survey')}
+            className={`px-6 py-3 rounded-lg font-bold text-sm flex items-center gap-2 transition-all ${
+              activeTab === 'survey' 
                 ? 'bg-white text-gray-900 shadow-sm' 
                 : 'text-gray-500 hover:text-gray-900'
             }`}
           >
-            <Calendar className="w-4 h-4" />
-            Attendance
+            <FileText className="w-4 h-4" />
+            Survey Form ({surveyStudents.length})
           </button>
         </div>
 
-        {viewMode === 'list' && (
         <div className="flex gap-2">
           <div className="relative" ref={columnSelectorRef}>
             <button
@@ -576,7 +534,14 @@ const StudentOperationsManager: React.FC = () => {
                   <div className="space-y-1">
                     {availableColumns.map((column) => {
                       const isVisible = visibleColumns.has(column);
-                      const isStandard = ['Student', 'Payment', 'Attendance', 'Grades', 'Actions'].includes(column);
+                      // Determine if column is standard based on active tab
+                      let isStandard = false;
+                      if (activeTab === 'register') {
+                        isStandard = ['Student', 'Payment', 'Onboarding', 'Module 1'].includes(column);
+                      } else {
+                        isStandard = ['Student Full Name', 'Resume'].includes(column);
+                      }
+                      
                       return (
                         <label
                           key={column}
@@ -625,105 +590,24 @@ const StudentOperationsManager: React.FC = () => {
             Copy Emails
           </button>
         </div>
-        )}
       </div>
 
-      {viewMode === 'attendance' ? (
-        <AttendanceManager students={students} onUpdate={loadData} />
-      ) : (
-        <>
-      {/* Metrics View */}
-      {metrics && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm font-medium">Total Students</span>
-              <div className="p-2 bg-yellow/10 rounded-full">
-                <Users className="w-5 h-5 text-yellow" />
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-gray-900">{metrics.total_students}</div>
-          </div>
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm font-medium">Paid</span>
-              <div className="p-2 bg-green-100 rounded-full">
-                <DollarSign className="w-5 h-5 text-green-600" />
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-green-600">{metrics.paid_count}</div>
-            <div className="text-xs text-gray-400 mt-1">
-              {metrics.total_students > 0 
-                ? Math.round((metrics.paid_count / metrics.total_students) * 100) 
-                : 0}% of total
-            </div>
-          </div>
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm font-medium">Onboarding</span>
-              <div className="p-2 bg-yellow/10 rounded-full">
-                <TrendingUp className="w-5 h-5 text-yellow" />
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-yellow">{metrics.onboarding_percentage}%</div>
-            <div className="text-xs text-gray-400 mt-1">{metrics.has_resume_count} with resume</div>
-          </div>
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-gray-500 text-sm font-medium">Unpaid</span>
-              <div className="p-2 bg-red-100 rounded-full">
-                <AlertCircle className="w-5 h-5 text-red-600" />
-              </div>
-            </div>
-            <div className="text-3xl font-bold text-red-600">{metrics.unpaid_count}</div>
-          </div>
+      {/* Search */}
+      <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-6">
+        <div className="relative w-full md:w-96">
+          <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+          <input
+            type="text"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            className="bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 text-gray-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none w-full transition-all placeholder:text-gray-400"
+            placeholder="Search by name, email..."
+          />
         </div>
-      )}
-
-      {/* Status Summary */}
-      {status && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl p-6 border border-gray-100 shadow-sm">
-            <h4 className="text-lg font-bold text-gray-900 mb-4">Missing Items</h4>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Missing Payment</span>
-                <span className="text-red-600 font-bold bg-red-50 px-2 py-0.5 rounded">{status.missing_payment.length}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Missing Resume</span>
-                <span className="text-yellow-600 font-bold bg-yellow/10 px-2 py-0.5 rounded">{status.missing_resume.length}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Missing Attendance</span>
-                <span className="text-blue-600 font-bold bg-blue-50 px-2 py-0.5 rounded">{status.missing_attendance.length}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-gray-500">Missing Grades</span>
-                <span className="text-purple-600 font-bold bg-purple-50 px-2 py-0.5 rounded">{status.missing_grades.length}</span>
-              </div>
-            </div>
-          </div>
+        <div className="text-sm text-gray-500">
+          Showing <span className="text-gray-900 font-bold">{filteredStudents.length}</span> {activeTab === 'register' ? 'Register' : 'Survey'} entries
         </div>
-      )}
-
-      {/* Student List View */}
-          {/* Search */}
-          <div className="flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-4 rounded-xl border border-gray-100 shadow-sm mb-6">
-            <div className="relative w-full md:w-96">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-              <input
-                type="text"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-                className="bg-gray-50 border border-gray-200 rounded-xl py-3 pl-12 pr-4 text-gray-900 focus:border-primary focus:ring-1 focus:ring-primary outline-none w-full transition-all placeholder:text-gray-400"
-                placeholder="Search by name, email..."
-              />
-            </div>
-            <div className="text-sm text-gray-500">
-              Showing <span className="text-gray-900 font-bold">{filteredStudents.length}</span> students
-            </div>
-          </div>
+      </div>
 
           {/* Student Table */}
           <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden shadow-sm">
@@ -756,22 +640,6 @@ const StudentOperationsManager: React.FC = () => {
               )}
             </div>
           </div>
-          
-          <StudentEditSheet
-            isOpen={isEditSheetOpen}
-            onClose={() => {
-              setIsEditSheetOpen(false);
-              setSelectedStudent(null);
-            }}
-            student={selectedStudent ? students.find(s => s['Email Address'] === selectedStudent['Email Address']) || selectedStudent : null}
-            onSave={handleUpdateStudent}
-            totalLabs={totalLabs}
-            classMap={classMap}
-          />
-        </>
-      )}
-      
-      {/* Legacy detail view removed in favor of Side Sheet */}
     </div>
   );
 };

@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Calendar, Users, Plus, Trash2, CheckCircle } from 'lucide-react';
 import { ClassSession, classService } from '../../services/classService';
-import { StudentOperations } from '../../services/api';
+import { UserWithAdminData } from '../../services/api';
 import { useToast } from '../Toast';
 import ClassAttendanceSheet from './ClassAttendanceSheet';
 
 interface AttendanceManagerProps {
-  students: StudentOperations[];
+  students: UserWithAdminData[];
   onUpdate: () => Promise<void>;
 }
 
@@ -62,7 +62,7 @@ export default function AttendanceManager({ students, onUpdate }: AttendanceMana
   const getAttendanceCount = (classId: string) => {
     return students.filter(s => {
         try {
-            const att = typeof s.Attendance === 'string' ? JSON.parse(s.Attendance) : s.Attendance;
+            const att = s.attendance || {};
             // The key used in JSON is the classId (UUID)
             return att && att[classId];
         } catch { return false; }

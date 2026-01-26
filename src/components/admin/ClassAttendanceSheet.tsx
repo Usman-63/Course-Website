@@ -4,12 +4,12 @@ import { useState, useEffect, Fragment } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { X, Save, Search, CheckSquare, Square, Loader2 } from 'lucide-react';
 import { ClassSession, classService } from '../../services/classService';
-import { StudentOperations } from '../../services/api';
+import { UserWithAdminData } from '../../services/api';
 import { useToast } from '../Toast';
 
 interface ClassAttendanceSheetProps {
   classSession: ClassSession;
-  students: StudentOperations[];
+  students: UserWithAdminData[];
   isOpen: boolean;
   onClose: () => void;
   onSave: () => Promise<void>;
@@ -65,7 +65,7 @@ export default function ClassAttendanceSheet({ classSession, students, isOpen, o
   };
 
   const filteredStudents = students.filter(s => {
-      const name = s.Name || s['Student Name'] || s['Full Name'] || '';
+      const name = s.Name || s.name || '';
       const email = s['Email Address'] || '';
       const search = searchTerm.toLowerCase();
       return name.toLowerCase().includes(search) || email.toLowerCase().includes(search);
@@ -137,7 +137,7 @@ export default function ClassAttendanceSheet({ classSession, students, isOpen, o
                             const email = student['Email Address'];
                             const hasEmail = !!email;
                             const isPresent = hasEmail && presentEmails.has(email);
-                            const name = student.Name || student['Student Name'] || student['Full Name'] || 'Unknown';
+                            const name = student.Name || student.name || 'Unknown';
                             
                             return (
                                 <div 

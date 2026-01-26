@@ -429,24 +429,38 @@ def sort_students(students: List[Dict[str, Any]], sort_by: str = 'name', sort_or
     reverse = (sort_order == 'desc')
     
     if sort_by == 'name':
-        students.sort(
-            key=lambda x: (x.get('Name') or x.get('Email Address') or '').lower(),
-            reverse=reverse
-        )
+        def get_name(x):
+            # Try various name fields
+            if 'First Name' in x and 'Last Name' in x:
+                first = x.get('First Name', '') or ''
+                last = x.get('Last Name', '') or ''
+                return f"{first} {last}".strip().lower()
+            return (x.get('Student Full Name') or 
+                   x.get('Name') or 
+                   x.get('Student Name') or 
+                   x.get('Email Address') or '').lower()
+        
+        students.sort(key=get_name, reverse=reverse)
     elif sort_by == 'email':
         students.sort(
             key=lambda x: (x.get('Email Address') or '').lower(),
             reverse=reverse
         )
     elif sort_by == 'payment':
-        payment_order = {'Paid': 0, 'Unpaid': 1, 'Not Registered': 2}
-        students.sort(
-            key=lambda x: payment_order.get(x.get('Payment Status', 'Unpaid'), 3),
-            reverse=reverse
-        )
+        # For Register form, use "Payment proved" column (yes/no)
+        def get_payment_value(x):
+            payment_proved = str(x.get('Payment proved', '')).lower().strip()
+            if payment_proved == 'yes':
+                return 0
+            elif payment_proved == 'no':
+                return 1
+            else:
+                return 2  # Not set
+        
+        students.sort(key=get_payment_value, reverse=reverse)
     elif sort_by == 'timestamp':
         students.sort(
-            key=lambda x: x.get('Timestamp') or '',
+            key=lambda x: x.get('Timestamp') or x.get('timestamp') or '',
             reverse=reverse
         )
 

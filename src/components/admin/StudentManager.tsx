@@ -2,16 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { db } from '../../services/firebase';
 import { auth } from '../../services/firebase';
 import { collection, query, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Users, Search, ExternalLink, Shield, ShieldAlert, Trash2, Loader } from 'lucide-react';
-import { getCourseData } from '../../services/api';
+import { Users, Search, ExternalLink, Shield, ShieldAlert, Trash2, Loader, Edit } from 'lucide-react';
+import { getCourseData, getUsersWithAdminData, UserWithAdminData } from '../../services/api';
+import { classService } from '../../services/classService';
+import StudentEditSheet from './StudentEditSheet';
 
-interface User {
+interface User extends UserWithAdminData {
   id: string;
-  name: string;
-  email: string;
-  role: string;
+  role?: string;
   isActive?: boolean;
-  createdAt: any;
+  createdAt?: any;
   progress?: Record<string, boolean>; // map of module IDs to completion status
   submissions?: Record<string, string>; // map of module IDs to video URLs
 }
@@ -22,6 +22,9 @@ const StudentManager: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [totalModules, setTotalModules] = useState(0);
   const [authReady, setAuthReady] = useState(false);
+  const [editingStudent, setEditingStudent] = useState<UserWithAdminData | null>(null);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [totalLabs, setTotalLabs] = useState(0);
 
   // Wait for auth to be ready
   useEffect(() => {
@@ -44,36 +47,85 @@ const StudentManager: React.FC = () => {
       try {
         const courseData = await getCourseData();
         setTotalModules(courseData.modules?.length || 0);
+        
+        // Calculate total labs
+        let labs = 0;
+        if (courseData.modules) {
+          courseData.modules.forEach((module: any) => {
+            labs += module.labCount || 0;
+          });
+        }
+        setTotalLabs(labs);
       } catch (error) {
         console.error("Error fetching course data:", error);
         setTotalModules(0);
+        setTotalLabs(0);
       }
     };
     
     fetchCourseData();
     
-    // In a real app with thousands of users, you'd use pagination.
-    // For this size, fetching all is fine.
-    // We remove orderBy('createdAt') temporarily to ensure we see users even if they lack that field
-    const q = query(collection(db, 'users'));
+    // Fetch classes for attendance
+    const fetchClasses = async () => {
+      try {
+        const classData = await classService.getAll();
+        setClasses(classData);
+      } catch (error) {
+        console.error("Error fetching classes:", error);
+      }
+    };
+    fetchClasses();
     
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const data = snapshot.docs.map(doc => {
-        const d = doc.data();
-        return {
-          id: doc.id,
-          ...d
-        };
-      }) as User[];
-      setStudents(data);
-      setLoading(false);
-    }, (error) => {
-      console.error("Firestore snapshot error:", error);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    // Fetch users with admin data
+    const fetchUsers = async () => {
+      try {
+        const response = await getUsersWithAdminData();
+        const users = response.students.map((student) => ({
+          ...student,
+          id: student._id,
+          email: student['Email Address'],
+          name: student.Name || student.name || '',
+          isActive: student.isActive,  // Map isActive from API response
+          role: student.role,  // Map role from API response
+        })) as User[];
+        setStudents(users);
+      } catch (error) {
+        console.error("Error fetching users:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchUsers();
   }, [authReady]);
+
+  const handleSaveStudent = async (uid: string, updates: any) => {
+    try {
+      // Update via API
+      const { updateUserAdminData } = await import('../../services/api');
+      await updateUserAdminData(uid, updates);
+      
+      // Refresh students list
+      const response = await getUsersWithAdminData();
+      const updatedUsers = response.students.map((s) => ({
+        ...s,
+        id: s._id,
+        email: s['Email Address'],
+        name: s.Name || s.name || '',
+        isActive: s.isActive,  // Map isActive from API response
+        role: s.role,  // Map role from API response
+      })) as User[];
+      setStudents(updatedUsers);
+    } catch (error) {
+      console.error("Error saving student:", error);
+      throw error;
+    }
+  };
+
+  const getAttendanceCount = (user: User) => {
+    const attendance = user.attendance || {};
+    return Object.values(attendance).filter(Boolean).length;
+  };
 
   const toggleActivation = async (userId: string, currentStatus?: boolean) => {
     try {
@@ -81,6 +133,17 @@ const StudentManager: React.FC = () => {
       await updateDoc(userRef, {
         isActive: !currentStatus
       });
+      // Refresh students list
+      const response = await getUsersWithAdminData();
+      const updatedUsers = response.students.map((s) => ({
+        ...s,
+        id: s._id,
+        email: s['Email Address'],
+        name: s.Name || s.name || '',
+        isActive: s.isActive,  // Map isActive from API response
+        role: s.role,  // Map role from API response
+      })) as User[];
+      setStudents(updatedUsers);
     } catch (error) {
       console.error("Error toggling activation:", error);
       alert("Failed to update user status");
@@ -91,6 +154,17 @@ const StudentManager: React.FC = () => {
     if (window.confirm(`Are you sure you want to delete ${userName}? This cannot be undone.`)) {
       try {
         await deleteDoc(doc(db, 'users', userId));
+        // Refresh students list
+        const response = await getUsersWithAdminData();
+        const updatedUsers = response.students.map((s) => ({
+          ...s,
+          id: s._id,
+          email: s['Email Address'],
+          name: s.Name || s.name || '',
+          isActive: s.isActive,  // Map isActive from API response
+          role: s.role,  // Map role from API response
+        })) as User[];
+        setStudents(updatedUsers);
       } catch (error) {
         console.error("Error deleting student:", error);
         alert("Failed to delete student");
@@ -133,15 +207,17 @@ const StudentManager: React.FC = () => {
             <tr className="bg-gray-50 text-gray-600 text-xs font-bold uppercase tracking-wider border-b border-gray-200">
               <th className="px-6 py-5">Student</th>
               <th className="px-6 py-5">Status & Role</th>
+              <th className="px-6 py-5">Attendance</th>
+              <th className="px-6 py-5">Payment</th>
               <th className="px-6 py-5">Progress</th>
               <th className="px-6 py-5">Submissions</th>
-              <th className="px-6 py-5">Joined</th>
+              <th className="px-6 py-5">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
             {loading && (
               <tr>
-                <td colSpan={5} className="py-20 text-center">
+                <td colSpan={7} className="py-20 text-center">
                   <div className="flex flex-col items-center justify-center gap-3 text-gray-500">
                     <Loader className="w-8 h-8 animate-spin text-primary" />
                     <p>Loading students...</p>
@@ -154,6 +230,8 @@ const StudentManager: React.FC = () => {
               const progressPercent = totalModules > 0 ? Math.round((completedCount / totalModules) * 100) : 0;
               
               const submissions = student.submissions ? Object.entries(student.submissions) : [];
+              const attendanceCount = getAttendanceCount(student);
+              const paymentStatus = student['Payment Status'] || student.paymentStatus || '';
 
               return (
                 <tr key={student.id} className="hover:bg-gray-50 transition-colors group">
@@ -192,17 +270,26 @@ const StudentManager: React.FC = () => {
                                <><ShieldAlert className="w-3 h-3" /> Inactive</>
                             )}
                           </button>
-                          
-                          <button
-                            onClick={() => deleteStudent(student.id, student.name)}
-                            className="p-1.5 rounded-lg text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors"
-                            title="Delete Student"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
                         </div>
                       )}
                     </div>
+                  </td>
+                  <td className="px-6 py-5 align-middle">
+                    <div className="text-sm text-gray-700">
+                      <span className="font-semibold">{attendanceCount}</span>
+                      <span className="text-gray-500"> classes</span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-5 align-middle">
+                    {paymentStatus && (
+                      <span className={`px-3 py-1 rounded-full text-xs font-semibold ${
+                        paymentStatus.toLowerCase() === 'paid'
+                          ? 'bg-green-100 text-green-700'
+                          : 'bg-red-100 text-red-700'
+                      }`}>
+                        {paymentStatus}
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-5 align-middle">
                     <div className="w-full max-w-[160px]">
@@ -252,31 +339,14 @@ const StudentManager: React.FC = () => {
                       <span className="text-gray-400 text-xs italic">No submissions</span>
                     )}
                   </td>
-                  <td className="px-6 py-5 align-middle text-sm text-gray-500 font-mono">
-                    {(() => {
-                      if (!student.createdAt) return 'N/A';
-                      
-                      // Handle Firestore Timestamp
-                      if (student.createdAt.toDate && typeof student.createdAt.toDate === 'function') {
-                        return student.createdAt.toDate().toLocaleDateString();
-                      }
-                      
-                      // Handle ISO string (backward compatibility)
-                      if (typeof student.createdAt === 'string') {
-                        try {
-                          return new Date(student.createdAt).toLocaleDateString();
-                        } catch {
-                          return 'N/A';
-                        }
-                      }
-                      
-                      // Handle Timestamp object with seconds/nanoseconds
-                      if (student.createdAt.seconds) {
-                        return new Date(student.createdAt.seconds * 1000).toLocaleDateString();
-                      }
-                      
-                      return 'N/A';
-                    })()}
+                  <td className="px-6 py-5 align-middle">
+                    <button
+                      onClick={() => setEditingStudent(student as UserWithAdminData)}
+                      className="px-3 py-1.5 bg-yellow text-navy rounded-lg text-xs font-semibold hover:bg-yellow-hover transition-all flex items-center gap-1.5"
+                    >
+                      <Edit className="w-3 h-3" />
+                      Edit
+                    </button>
                   </td>
                 </tr>
               );
@@ -291,6 +361,17 @@ const StudentManager: React.FC = () => {
           </div>
         )}
       </div>
+      
+      {editingStudent && (
+        <StudentEditSheet
+          isOpen={!!editingStudent}
+          onClose={() => setEditingStudent(null)}
+          student={editingStudent as any}
+          onSave={handleSaveStudent}
+          totalLabs={totalLabs}
+          classMap={new Map(classes.map(c => [c.id, c.topic]))}
+        />
+      )}
     </div>
   );
 };

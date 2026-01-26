@@ -1,13 +1,13 @@
 import React, { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { X, Save, CheckSquare, Square, AlertCircle, Loader2, TrendingUp, FileText, Users, DollarSign, MessageSquare } from 'lucide-react';
-import { StudentOperations } from '../../services/api';
+import { UserWithAdminData, updateUserAdminData } from '../../services/api';
 
 interface StudentEditSheetProps {
   isOpen: boolean;
   onClose: () => void;
-  student: StudentOperations | null;
-  onSave: (email: string, updates: Partial<StudentOperations>) => Promise<void>;
+  student: UserWithAdminData | null;
+  onSave: (uid: string, updates: Partial<UserWithAdminData>) => Promise<void>;
   totalLabs: number;
   classMap: Map<string, string>; // Map class ID to topic
 }
@@ -20,16 +20,16 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
   totalLabs,
   classMap
 }) => {
-  const [formData, setFormData] = useState<Partial<StudentOperations>>({});
+  const [formData, setFormData] = useState<Partial<UserWithAdminData>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [lastStudentEmail, setLastStudentEmail] = useState<string | null>(null);
+  const [lastStudentId, setLastStudentId] = useState<string | null>(null);
 
   useEffect(() => {
     // Only reset formData when opening with a different student
-    const currentEmail = student?.['Email Address'];
-    if (student && currentEmail && currentEmail !== lastStudentEmail) {
+    const currentId = student?._id;
+    if (student && currentId && currentId !== lastStudentId) {
       // Parse attendance if it's a string
-      let attendance = student.Attendance;
+      let attendance = student.attendance || {};
       if (typeof attendance === 'string') {
         try {
           attendance = JSON.parse(attendance);
@@ -39,45 +39,45 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
       }
 
       setFormData({
-        Name: student.Name || student['Student Name'] || student['Student Full Name'] || '',
-        Attendance: attendance || {},
-        'Teacher Evaluation': student['Teacher Evaluation'] || '',
-        'Payment Status': student['Payment Status'] || '',
-        'Payment Comment': student['Payment Comment'] || '',
+        Name: student.Name || student.name || '',
+        attendance: attendance || {},
+        'Teacher Evaluation': student['Teacher Evaluation'] || student.teacherEvaluation || '',
+        'Payment Status': student['Payment Status'] || student.paymentStatus || '',
+        'Payment Comment': student['Payment Comment'] || student.paymentComment || '',
         ...Object.fromEntries(
           Array.from({ length: totalLabs }, (_, i) => [
             `Assignment ${i + 1} Grade`,
-            student[`Assignment ${i + 1} Grade`] || ''
+            '' // Will be populated from assignmentGrades if needed
           ])
         )
       });
       
-      setLastStudentEmail(currentEmail);
+      setLastStudentId(currentId);
     }
-  }, [student, totalLabs, lastStudentEmail]);
+  }, [student, totalLabs, lastStudentId]);
 
   const handleSave = async () => {
-    if (!student?.['Email Address']) return;
+    if (!student?._id) return;
     
     setIsSaving(true);
     try {
-      await onSave(student['Email Address'], formData);
-      // Reset lastStudentEmail so formData resets on next open
-      setLastStudentEmail(null);
+      await onSave(student._id, formData);
+      // Reset lastStudentId so formData resets on next open
+      setLastStudentId(null);
       onClose();
     } catch (error) {
       console.error('Failed to save:', error);
-      // Don't reset lastStudentEmail on error so user can retry
+      // Don't reset lastStudentId on error so user can retry
     } finally {
       setIsSaving(false);
     }
   };
 
   const toggleAttendance = (className: string) => {
-    const currentAttendance = (formData.Attendance as Record<string, boolean>) || {};
+    const currentAttendance = (formData.attendance as Record<string, boolean>) || {};
     setFormData({
       ...formData,
-      Attendance: {
+      attendance: {
         ...currentAttendance,
         [className]: !currentAttendance[className]
       }
@@ -124,7 +124,7 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                             Edit Student Record
                           </Dialog.Title>
                           <div className="mt-1 flex flex-col">
-                            <span className="text-yellow-600 font-medium text-lg">{student.Name || student['Student Full Name'] || 'Unknown Name'}</span>
+                            <span className="text-yellow-600 font-medium text-lg">{student.Name || student.name || 'Unknown Name'}</span>
                             <span className="text-gray-500 text-sm">{student['Email Address']}</span>
                           </div>
                         </div>
@@ -174,9 +174,9 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                         </h3>
                         <div className="bg-gray-50 p-4 rounded-xl border border-gray-200">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            {Object.keys((formData.Attendance as Record<string, boolean>) || {}).length > 0 ? (
-                              Object.keys((formData.Attendance as Record<string, boolean>)).map((classId) => {
-                                const isPresent = (formData.Attendance as Record<string, boolean>)[classId];
+                            {Object.keys((formData.attendance as Record<string, boolean>) || {}).length > 0 ? (
+                              Object.keys((formData.attendance as Record<string, boolean>)).map((classId) => {
+                                const isPresent = (formData.attendance as Record<string, boolean>)[classId];
                                 const classTopic = classMap.get(classId) || classId; // Use topic if available, fallback to ID
                                 return (
                                   <div 

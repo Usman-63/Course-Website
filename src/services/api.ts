@@ -375,6 +375,182 @@ export const deleteModule = async (moduleId: string, courseId?: string): Promise
   return response.json();
 };
 
+// Form Data API (Register and Survey - separate, no merging)
+export const getRegisterStudents = async (
+  sortBy: 'name' | 'email' | 'payment' | 'timestamp' = 'name',
+  sortOrder: 'asc' | 'desc' = 'asc',
+  forceRefresh: boolean = false
+): Promise<{ success: boolean; students: StudentOperations[] }> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  
+  const url = new URL(`${API_URL}/api/admin/students/register`);
+  url.searchParams.set('sort_by', sortBy);
+  url.searchParams.set('sort_order', sortOrder);
+  if (forceRefresh) {
+    url.searchParams.set('force_refresh', 'true');
+  }
+  
+  const response = await fetchWithRetry(url.toString(), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    timeout: 15000,
+    retries: 2,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error('Authentication failed');
+    }
+    throw new Error('Failed to fetch Register students');
+  }
+  
+  return response.json();
+};
+
+export const getSurveyStudents = async (
+  sortBy: 'name' | 'email' | 'payment' | 'timestamp' = 'name',
+  sortOrder: 'asc' | 'desc' = 'asc',
+  forceRefresh: boolean = false
+): Promise<{ success: boolean; students: StudentOperations[] }> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  
+  const url = new URL(`${API_URL}/api/admin/students/survey`);
+  url.searchParams.set('sort_by', sortBy);
+  url.searchParams.set('sort_order', sortOrder);
+  if (forceRefresh) {
+    url.searchParams.set('force_refresh', 'true');
+  }
+  
+  const response = await fetchWithRetry(url.toString(), {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    timeout: 15000,
+    retries: 2,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error('Authentication failed');
+    }
+    throw new Error('Failed to fetch Survey students');
+  }
+  
+  return response.json();
+};
+
+// User Admin Data API (Firebase users with admin data)
+export interface UserWithAdminData {
+  _id: string; // UID
+  'Email Address': string;
+  Name?: string;
+  name?: string;
+  attendance?: Record<string, boolean>;
+  assignmentGrades?: Record<string, Record<string, Record<string, string>>>;
+  'Teacher Evaluation'?: string;
+  teacherEvaluation?: string;
+  'Payment Status'?: string;
+  paymentStatus?: string;
+  'Payment Comment'?: string;
+  paymentComment?: string;
+  paymentScreenshot?: string;
+  'Resume Link'?: string;
+  resumeLink?: string;
+}
+
+export const getUsersWithAdminData = async (): Promise<{ success: boolean; students: UserWithAdminData[] }> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  
+  const response = await fetchWithRetry(`${API_URL}/api/admin/students`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    timeout: 15000,
+    retries: 2,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error('Authentication failed');
+    }
+    throw new Error('Failed to fetch users with admin data');
+  }
+  
+  return response.json();
+};
+
+export const getUserAdminData = async (uid: string): Promise<{ success: boolean; student: UserWithAdminData }> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  
+  const response = await fetchWithRetry(`${API_URL}/api/admin/students/${encodeURIComponent(uid)}`, {
+    headers: {
+      'Authorization': `Bearer ${token}`,
+    },
+    timeout: 10000,
+    retries: 2,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error('Authentication failed');
+    }
+    if (response.status === 404) {
+      throw new Error('User not found');
+    }
+    throw new Error('Failed to fetch user admin data');
+  }
+  
+  return response.json();
+};
+
+export const updateUserAdminData = async (
+  uid: string,
+  updates: Partial<UserWithAdminData>
+): Promise<{ success: boolean; message: string }> => {
+  const token = getAuthToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  
+  const response = await fetchWithRetry(`${API_URL}/api/admin/students/${encodeURIComponent(uid)}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify(updates),
+    timeout: 15000,
+    retries: 2,
+  });
+  
+  if (!response.ok) {
+    if (response.status === 401) {
+      clearAuthToken();
+      throw new Error('Authentication failed');
+    }
+    throw new Error('Failed to update user admin data');
+  }
+  
+  return response.json();
+};
+
 // Student Operations API (Google Sheets)
 export interface StudentOperations {
   'Email Address': string;
@@ -414,83 +590,6 @@ export interface OperationsStatus {
   missing_attendance: Array<{ email: string; name: string }>;
   missing_grades: Array<{ email: string; name: string; missing: string[] }>;
 }
-
-export const getStudentsOperations = async (
-  sortBy: 'name' | 'email' | 'payment' | 'timestamp' = 'name',
-  sortOrder: 'asc' | 'desc' = 'asc',
-  forceRefresh: boolean = false
-): Promise<{ success: boolean; students: StudentOperations[] }> => {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-  
-  const url = new URL(`${API_URL}/api/admin/students/operations`);
-  url.searchParams.set('sort_by', sortBy);
-  url.searchParams.set('sort_order', sortOrder);
-  if (forceRefresh) {
-    url.searchParams.set('force_refresh', 'true');
-  }
-  
-  const response = await fetchWithRetry(url.toString(), {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    timeout: 15000,
-    retries: 2,
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearAuthToken();
-      throw new Error('Authentication failed');
-    }
-    throw new Error('Failed to fetch students operations');
-  }
-  
-  return response.json();
-};
-
-export const getStudentsOperationsCombined = async (
-  sortBy: 'name' | 'email' | 'payment' | 'timestamp' = 'name',
-  sortOrder: 'asc' | 'desc' = 'asc',
-  forceRefresh: boolean = false
-): Promise<{ 
-  success: boolean; 
-  students: StudentOperations[]; 
-  metrics: OperationsMetrics; 
-  status: OperationsStatus 
-}> => {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-  
-  const url = new URL(`${API_URL}/api/admin/students/operations/all`);
-  url.searchParams.set('sort_by', sortBy);
-  url.searchParams.set('sort_order', sortOrder);
-  if (forceRefresh) {
-    url.searchParams.set('force_refresh', 'true');
-  }
-  
-  const response = await fetchWithRetry(url.toString(), {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    timeout: 15000,
-    retries: 2,
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearAuthToken();
-      throw new Error('Authentication failed');
-    }
-    throw new Error('Failed to fetch students operations');
-  }
-  
-  return response.json();
-};
 
 export const getStudentOperations = async (email: string): Promise<{ success: boolean; student: StudentOperations }> => {
   const token = getAuthToken();

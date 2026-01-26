@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Users, DollarSign, AlertCircle, Loader2, Calendar, BookOpen, CheckCircle, FileText, RefreshCw, Clock } from 'lucide-react';
-import { getStudentsOperationsCombined, OperationsMetrics, getCourseData, CourseModule, getAuthToken } from '../../services/api';
+import { Users, DollarSign, AlertCircle, Loader2, Calendar, BookOpen, CheckCircle, FileText } from 'lucide-react';
+import { getRegisterStudents, getSurveyStudents, getCourseData, CourseModule } from '../../services/api';
 import { db } from '../../services/firebase';
 import { collection, query, orderBy, limit, getDocs } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
@@ -12,28 +12,77 @@ interface Announcement {
   createdAt: any;
 }
 
+interface DashboardMetrics {
+  total_students: number;
+  paid_count: number;
+  unpaid_count: number;
+  has_resume_count: number;
+  onboarding_percentage: number;
+  survey_filled_count: number;
+  survey_not_filled_count: number;
+  last_synced?: string;
+}
+
 const AdminDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const [metrics, setMetrics] = useState<OperationsMetrics | null>(null);
+  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [modules, setModules] = useState<CourseModule[]>([]);
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
-  const [lastSynced, setLastSynced] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [opsRes, courseRes] = await Promise.all([
-          getStudentsOperationsCombined(),
+        const [registerRes, surveyRes, courseRes] = await Promise.all([
+          getRegisterStudents('name', 'asc', false),
+          getSurveyStudents('name', 'asc', false),
           getCourseData()
         ]);
         
-        setMetrics(opsRes.metrics || null);
-        // If backend provides last_synced in metrics, capture it
-        if (opsRes.metrics?.last_synced) {
-          setLastSynced(opsRes.metrics.last_synced);
-        }
+        // Calculate metrics from separate Register and Survey data (no merging)
+        const registerStudents = registerRes.students || [];
+        const surveyStudents = surveyRes.students || [];
+        
+        // Use counts directly from each form (no email matching/merging)
+        const registerCount = registerStudents.length;
+        const surveyCount = surveyStudents.length;
+        
+        let paidCount = 0;
+        let hasResumeCount = 0;
+        
+        // Count paid students from Register - check "Payment proved" column
+        registerStudents.forEach(s => {
+          const paymentProved = (s['Payment proved'] || '').toString().toLowerCase().trim();
+          if (paymentProved === 'yes') {
+            paidCount++;
+          }
+        });
+        
+        // Count resumes from Survey form only
+        surveyStudents.forEach(s => {
+          const resumeValue = s['Upload your Resume / CV (PDF preferred)  '] || 
+                             s['Upload your Resume / CV (PDF preferred)'] || '';
+          const resumeStr = resumeValue ? String(resumeValue).trim() : '';
+          if (resumeStr !== '' && 
+              resumeStr.toLowerCase() !== 'n/a' &&
+              resumeStr.toLowerCase() !== 'nan' &&
+              resumeStr !== 'undefined' &&
+              resumeStr !== 'null') {
+            hasResumeCount++;
+          }
+        });
+        
+        const calculatedMetrics: DashboardMetrics = {
+          total_students: registerCount, // Total from Register form only
+          paid_count: paidCount,
+          unpaid_count: registerCount - paidCount,
+          has_resume_count: hasResumeCount,
+          onboarding_percentage: registerCount > 0 ? Math.round((hasResumeCount / registerCount) * 100) : 0,
+          survey_filled_count: surveyCount, // Count from Survey form only
+          survey_not_filled_count: Math.max(0, registerCount - surveyCount), // Simple subtraction
+        };
+        
+        setMetrics(calculatedMetrics);
         setModules(courseRes.modules || []);
 
         // Fetch recent announcements from Firestore
@@ -55,39 +104,9 @@ const AdminDashboard: React.FC = () => {
   }, []);
 
   const handleSyncNow = async () => {
-    try {
-      setSyncing(true);
-      const token = getAuthToken();
-      if (!token) {
-        console.error('No auth token available');
-        return;
-      }
-      
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5000'}/api/admin/students/operations/sync`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        console.error('Sync failed:', data);
-        return;
-      }
-
-      // Update metrics and last synced if returned
-      if (data.metrics) {
-        setMetrics(data.metrics);
-        if (data.metrics.last_synced) {
-          setLastSynced(data.metrics.last_synced);
-        }
-      }
-    } catch (err) {
-      console.error('Error triggering sync:', err);
-    } finally {
-      setSyncing(false);
-    }
+    // Sync is no longer needed - data is fetched directly from forms
+    // This function is kept for UI compatibility but does nothing
+    return;
   };
 
   if (loading) {
@@ -127,22 +146,8 @@ const AdminDashboard: React.FC = () => {
           </div>
           <div className="relative z-10 flex items-center justify-between mt-4">
             <div className="flex items-center gap-2 text-xs text-gray-500">
-              <Clock className="w-4 h-4" />
-              <span>
-                {lastSynced
-                  ? `Last synced: ${new Date(lastSynced).toLocaleString()}`
-                  : 'Sync not run yet'}
-              </span>
+              <span>Data loaded from Register and Survey forms</span>
             </div>
-            <button
-              type="button"
-              onClick={handleSyncNow}
-              disabled={syncing}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium bg-yellow/10 text-yellow-700 hover:bg-yellow/20 disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <RefreshCw className={`w-4 h-4 ${syncing ? 'animate-spin' : ''}`} />
-              <span>{syncing ? 'Syncing…' : 'Sync Now'}</span>
-            </button>
           </div>
           {/* Abstract background decoration */}
           <div className="absolute right-0 top-0 h-full w-1/3 bg-gray-50 rounded-l-full opacity-50 transform translate-x-1/4"></div>

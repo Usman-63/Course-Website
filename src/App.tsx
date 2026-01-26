@@ -10,6 +10,7 @@ import AdminLayout from './layouts/AdminLayout';
 import AdminDashboard from './pages/admin/AdminDashboard';
 import CourseContent from './pages/admin/CourseContent';
 import Engagement from './pages/admin/Engagement';
+import Attendance from './pages/admin/Attendance';
 import StudentManager from './components/admin/StudentManager';
 import StudentOperationsManager from './components/admin/StudentOperationsManager';
 import AdminLogin from './components/AdminLogin';
@@ -83,6 +84,7 @@ function App() {
                   <Route path="content" element={<CourseContent />} />
                   <Route path="students" element={<StudentManager />} />
                   <Route path="operations" element={<StudentOperationsManager />} />
+                  <Route path="attendance" element={<Attendance />} />
                   <Route path="engagement" element={<Engagement />} />
                 </Route>
               </Routes>

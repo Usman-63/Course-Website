@@ -1,8 +1,8 @@
 """
 Firestore-backed storage for admin-generated student data.
 
-This module replaces Google Sheets Admin_Logs with Firestore collections:
-- admin_students: Stores grades, attendance, evaluations, payment/resume backups
+This module stores admin data directly in the users collection (Firebase Auth users):
+- users: Stores grades, attendance, evaluations, payment/resume backups alongside user auth data
 - admin_classes: Stores class definitions for attendance tracking
 """
 
@@ -11,6 +11,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import uuid
+import json
 
 import firebase_admin
 from firebase_admin import firestore
@@ -19,7 +20,7 @@ from core.logger import logger
 from firestore.operations_cache import sanitize_for_firestore
 
 # Collection names
-ADMIN_STUDENTS_COLLECTION = "admin_students"
+USERS_COLLECTION = "users"
 ADMIN_CLASSES_COLLECTION = "admin_classes"
 
 
@@ -55,193 +56,132 @@ def _normalize_email(email: str) -> Optional[str]:
 
 
 # ---------------------------------------------------------------------------
-# Admin Students CRUD
+# User Admin Data CRUD (works with users collection)
 # ---------------------------------------------------------------------------
 
 
-def get_admin_student(email: str) -> Optional[Dict[str, Any]]:
+def _find_user_by_email(email: str) -> Optional[str]:
     """
-    Read single student admin data from Firestore by email.
+    Find Firebase user UID by email address.
+    
+    Args:
+        email: Email address to search for
+        
+    Returns:
+        User UID if found, None otherwise
+    """
+    client = _get_firestore_client()
+    if not client:
+        return None
+    
+    try:
+        email_normalized = _normalize_email(email)
+        if not email_normalized:
+            return None
+        
+        # Query users collection by email field
+        users_ref = client.collection(USERS_COLLECTION)
+        query = users_ref.where('email', '==', email_normalized).limit(1)
+        docs = query.stream()
+        
+        for doc in docs:
+            return doc.id  # Return the UID (document ID)
+        
+        return None
+    except Exception as exc:
+        logger.error(f"Error finding user by email {email}: {exc}", exc_info=True)
+        return None
+
+
+def get_user_admin_data(uid: str) -> Optional[Dict[str, Any]]:
+    """
+    Read admin data for a Firebase user by UID.
 
     Args:
-        email: Student email address
+        uid: Firebase user UID
 
     Returns:
-        Student admin data dict, or None if not found
+        User document with admin data fields, or None if not found
     """
     client = _get_firestore_client()
     if not client:
         return None
 
     try:
-        email_normalized = _normalize_email(email)
-        if not email_normalized:
-            logger.warning(f"Invalid or empty email provided: {email}")
+        if not uid or not isinstance(uid, str) or not uid.strip():
+            logger.warning(f"Invalid or empty UID provided: {uid}")
             return None
 
-        # Use normalized email as the document ID for deterministic lookups
-        doc_ref = client.collection(ADMIN_STUDENTS_COLLECTION).document(email_normalized)
+        # Get user document from users collection
+        doc_ref = client.collection(USERS_COLLECTION).document(uid.strip())
         doc = doc_ref.get()
 
         if not doc.exists:
             return None
 
         data = doc.to_dict() or {}
-        # Ensure email field is present and normalized
-        if "email" not in data or not data["email"]:
-            data["email"] = email_normalized
-
-        data["_id"] = doc.id  # Include document ID (email)
+        data["_id"] = doc.id  # Include document ID (UID)
         return data
     except Exception as exc:
-        logger.error(f"Error reading admin student {email}: {exc}", exc_info=True)
+        logger.error(f"Error reading user admin data {uid}: {exc}", exc_info=True)
         return None
 
 
-def get_all_admin_students() -> Dict[str, Dict[str, Any]]:
+def get_user_admin_data_by_email(email: str) -> Optional[Dict[str, Any]]:
     """
-    Read all admin student documents from Firestore.
+    Read admin data for a Firebase user by email (finds UID first).
+
+    Args:
+        email: User email address
 
     Returns:
-        Dict mapping normalized email -> admin data dict
+        User document with admin data fields, or None if not found
+    """
+    uid = _find_user_by_email(email)
+    if not uid:
+        return None
+    return get_user_admin_data(uid)
+
+
+def get_all_users_admin_data() -> List[Dict[str, Any]]:
+    """
+    Read all Firebase users with their admin data.
+
+    Returns:
+        List of user documents with admin data fields
     """
     client = _get_firestore_client()
     if not client:
-        return {}
+        return []
 
     try:
-        students_ref = client.collection(ADMIN_STUDENTS_COLLECTION)
-        docs = students_ref.stream()
+        users_ref = client.collection(USERS_COLLECTION)
+        docs = users_ref.stream()
 
-        result = {}
+        result = []
         for doc in docs:
             data = doc.to_dict()
             if data:
-                # Email field is required - skip documents without it
-                email = _normalize_email(data.get("email", ""))
-                if not email:
-                    logger.warning(f"Admin student document {doc.id} missing required email field, skipping")
-                    continue
-                
-                data["email"] = email
-                data["_id"] = doc.id  # Include document ID
-                result[email] = data
+                data["_id"] = doc.id  # Include document ID (UID)
+                result.append(data)
 
-        logger.debug(f"Read {len(result)} admin students from Firestore")
+        logger.debug(f"Read {len(result)} users from Firestore")
         return result
     except Exception as exc:
-        logger.error(f"Error reading all admin students: {exc}", exc_info=True)
-        return {}
-
-
-def create_admin_student(
-    email: str, initial_data: Optional[Dict[str, Any]] = None, course_module_structure: Optional[Dict[str, Dict[str, int]]] = None
-) -> bool:
-    """
-    Create new admin student document with default values.
-
-    Args:
-        email: Student email address
-        initial_data: Optional initial data (name, paymentScreenshot, etc.)
-        course_module_structure: Dict mapping course_id -> {module_id -> lab_count}
-            If None, will fetch from Firestore course data
-
-    Returns:
-        True if successful, False otherwise
-    """
-    client = _get_firestore_client()
-    if not client:
-        logger.error("Firestore client not available")
-        return False
-
-    try:
-        email_normalized = _normalize_email(email)
-        if not email_normalized:
-            logger.error(f"Invalid or empty email address: {email}")
-            return False
-
-        # Check if student already exists
-        existing = get_admin_student(email)
-        if existing:
-            logger.debug(f"Admin student already exists: {email}")
-            # If exists, sync assignment fields to match current course structure
-            if course_module_structure:
-                _sync_assignment_fields_for_student(email_normalized, course_module_structure, existing)
-            return True  # Already exists
-
-        # Get course/module structure if not provided
-        if course_module_structure is None:
-            from firestore.course_data import get_course_data as get_course_data_from_firestore
-            from students.student_helpers import get_course_module_structure
-            course_data = get_course_data_from_firestore()
-            course_module_structure = get_course_module_structure(course_data)
-
-        # Build default document
-        now = datetime.now(timezone.utc)
-        doc_data: Dict[str, Any] = {
-            # Store normalized email both as field and as document ID
-            "email": email_normalized,
-            "attendance": {},
-            "assignmentGrades": {},
-            "teacherEvaluation": "",
-            "createdAt": now,
-            "updatedAt": now,
-        }
-
-        # Initialize empty assignment grades per course/module
-        for course_id, modules in course_module_structure.items():
-            doc_data["assignmentGrades"][course_id] = {}
-            for module_id, lab_count in modules.items():
-                doc_data["assignmentGrades"][course_id][module_id] = {}
-                for lab_num in range(1, lab_count + 1):
-                    doc_data["assignmentGrades"][course_id][module_id][f"lab{lab_num}"] = ""
-
-        # Merge with initial_data if provided
-        if initial_data:
-            # Handle name
-            if "name" in initial_data or "Name" in initial_data:
-                doc_data["name"] = initial_data.get("name") or initial_data.get("Name")
-
-            # Handle payment screenshot
-            if "paymentScreenshot" in initial_data or "Payment Screenshot" in initial_data:
-                doc_data["paymentScreenshot"] = (
-                    initial_data.get("paymentScreenshot")
-                    or initial_data.get("Payment Screenshot")
-                )
-
-            # Handle resume link
-            if "resumeLink" in initial_data or "Resume Link" in initial_data:
-                doc_data["resumeLink"] = (
-                    initial_data.get("resumeLink") or initial_data.get("Resume Link")
-                )
-
-        # Sanitize before writing
-        doc_data = sanitize_for_firestore(doc_data)
-
-        # Write to Firestore using normalized email as the document ID
-        # Use merge=True to prevent overwriting if document was created concurrently
-        doc_ref = client.collection(ADMIN_STUDENTS_COLLECTION).document(email_normalized)
-        doc_ref.set(doc_data, merge=True)
-
-        logger.info(f"Created admin student document: {email} (ID: {email_normalized})")
-        return True
-    except Exception as exc:
-        logger.error(f"Error creating admin student {email}: {exc}", exc_info=True)
-        return False
-
-
-def _sync_assignment_fields_for_student(
-    email_normalized: str,
+        logger.error(f"Error reading all users: {exc}", exc_info=True)
+        return []
+def _sync_assignment_fields_for_user(
+    uid: str,
     course_module_structure: Dict[str, Dict[str, int]],
     existing_data: Dict[str, Any]
 ) -> None:
     """
-    Sync assignment fields for a single student to match course/module structure.
+    Sync assignment fields for a single user to match course/module structure.
     
     Args:
-        email_normalized: Normalized email (document ID)
+        uid: Firebase user UID
         course_module_structure: Dict mapping course_id -> {module_id -> lab_count}
-        existing_data: Existing student data
+        existing_data: Existing user data
     """
     client = _get_firestore_client()
     if not client:
@@ -287,14 +227,14 @@ def _sync_assignment_fields_for_student(
                         break
         
         if needs_update:
-            doc_ref = client.collection(ADMIN_STUDENTS_COLLECTION).document(email_normalized)
+            doc_ref = client.collection(USERS_COLLECTION).document(uid)
             doc_ref.update({
                 'assignmentGrades': updated_grades,
                 'updatedAt': datetime.now(timezone.utc)
             })
-            logger.debug(f"Synced assignment fields for student: {email_normalized}")
+            logger.debug(f"Synced assignment fields for user: {uid}")
     except Exception as exc:
-        logger.error(f"Error syncing assignment fields for {email_normalized}: {exc}", exc_info=True)
+        logger.error(f"Error syncing assignment fields for {uid}: {exc}", exc_info=True)
 
 
 def _convert_old_format_to_new_format(
@@ -359,19 +299,20 @@ def _deep_merge_assignment_grades(existing: Dict[str, Any], new: Dict[str, Any])
     return result
 
 
-def update_admin_student(email: str, updates: Dict[str, Any]) -> bool:
+def update_user_admin_data(uid: str, updates: Dict[str, Any]) -> bool:
     """
-    Update specific fields for an admin student.
+    Update admin data fields for a Firebase user.
 
     Args:
-        email: Student email address
+        uid: Firebase user UID
         updates: Dictionary of fields to update
             - attendance: dict (will be merged with existing)
             - assignmentGrades: dict (will be merged with existing)
             - teacherEvaluation: string
+            - paymentStatus: string
+            - paymentComment: string
             - paymentScreenshot: string
             - resumeLink: string
-            - name: string
 
     Returns:
         True if successful, False otherwise
@@ -382,24 +323,23 @@ def update_admin_student(email: str, updates: Dict[str, Any]) -> bool:
         return False
 
     try:
-        email_normalized = _normalize_email(email)
-        if not email_normalized:
-            logger.error(f"Invalid or empty email address: {email}")
+        if not uid or not isinstance(uid, str) or not uid.strip():
+            logger.error(f"Invalid or empty UID: {uid}")
             return False
 
-        # Find or create document by email
-        student_data = get_admin_student(email)
-        if not student_data:
-            logger.warning(f"Admin student not found for email: {email}. Creating new document.")
-            # Create the document if it doesn't exist
-            if create_admin_student(email, {}):
-                student_data = get_admin_student(email)
-            else:
-                logger.error(f"Failed to create admin student document for: {email}")
-                return False
-
-        # Use normalized email as document ID for updates
-        doc_ref = client.collection(ADMIN_STUDENTS_COLLECTION).document(email_normalized)
+        uid = uid.strip()
+        
+        # Ensure user exists and has admin fields initialized
+        user_data = get_user_admin_data(uid)
+        if not user_data:
+            logger.warning(f"User {uid} not found in Firestore")
+            return False
+        
+        # Ensure admin fields are initialized
+        _ensure_user_admin_fields(uid)
+        
+        # Get existing document
+        doc_ref = client.collection(USERS_COLLECTION).document(uid)
         existing_doc = doc_ref.get()
 
         update_data: Dict[str, Any] = {
@@ -551,20 +491,38 @@ def update_admin_student(email: str, updates: Dict[str, Any]) -> bool:
         # Update document
         doc_ref.update(update_data)
 
-        logger.info(f"Updated admin student: {email}")
+        logger.info(f"Updated user admin data: {uid}")
         return True
     except Exception as exc:
-        logger.error(f"Error updating admin student {email}: {exc}", exc_info=True)
+        logger.error(f"Error updating user admin data {uid}: {exc}", exc_info=True)
         return False
 
 
-def bulk_update_admin_students(updates: List[Dict[str, Any]], course_module_structure: Optional[Dict[str, Dict[str, int]]] = None) -> Dict[str, Any]:
+def update_user_admin_data_by_email(email: str, updates: Dict[str, Any]) -> bool:
     """
-    Batch update multiple admin students.
+    Update admin data fields for a Firebase user by email (finds UID first).
 
     Args:
-        updates: List of update dicts, each with 'email' key and field updates
-        course_module_structure: Optional course/module structure for creating missing students
+        email: User email address
+        updates: Dictionary of fields to update
+
+    Returns:
+        True if successful, False otherwise
+    """
+    uid = _find_user_by_email(email)
+    if not uid:
+        logger.warning(f"User not found for email: {email}")
+        return False
+    return update_user_admin_data(uid, updates)
+
+
+def bulk_update_users_admin_data(updates: List[Dict[str, Any]], course_module_structure: Optional[Dict[str, Dict[str, int]]] = None) -> Dict[str, Any]:
+    """
+    Batch update admin data for multiple Firebase users.
+
+    Args:
+        updates: List of update dicts, each with 'uid' or 'email' key and field updates
+        course_module_structure: Optional course/module structure for initializing fields
             If None, will fetch from Firestore course data
 
     Returns:
@@ -601,29 +559,29 @@ def bulk_update_admin_students(updates: List[Dict[str, Any]], course_module_stru
             batch_count = 0
 
             for update in batch_updates:
+                # Support both uid and email
+                uid = update.get("uid")
                 email = update.get("email")
-                if not email:
-                    logger.warning("Update missing email, skipping")
+                
+                if not uid and email:
+                    uid = _find_user_by_email(email)
+                
+                if not uid:
+                    logger.warning(f"Update missing uid/email, skipping")
                     stats['skipped'] += 1
                     continue
 
-                email_normalized = _normalize_email(email)
-                if not email_normalized:
-                    logger.warning(f"Invalid email in update: {email}, skipping")
+                # Ensure user exists and has admin fields
+                user_data = get_user_admin_data(uid)
+                if not user_data:
+                    logger.warning(f"User {uid} not found, skipping")
                     stats['skipped'] += 1
                     continue
+                
+                # Ensure admin fields are initialized
+                _ensure_user_admin_fields(uid, course_module_structure)
 
-                # Ensure document exists (create if missing)
-                student_data = get_admin_student(email)
-                if not student_data:
-                    logger.warning(f"Admin student not found for email: {email}. Creating new document.")
-                    # Create the document if it doesn't exist
-                    if not create_admin_student(email, {}, course_module_structure=course_module_structure):
-                        logger.error(f"Failed to create admin student document for: {email}, skipping update")
-                        stats['failed'] += 1
-                        continue
-
-                doc_ref = client.collection(ADMIN_STUDENTS_COLLECTION).document(email_normalized)
+                doc_ref = client.collection(USERS_COLLECTION).document(uid)
 
                 # Build update data (similar to update_admin_student logic)
                 update_data: Dict[str, Any] = {
@@ -769,7 +727,7 @@ def bulk_update_admin_students(updates: List[Dict[str, Any]], course_module_stru
 
 def sync_payment_backups_to_firestore(register_df) -> bool:
     """
-    Sync payment screenshots and resume links from Register to Firestore admin_students.
+    Sync payment screenshots and resume links from Register to Firestore users collection.
 
     Args:
         register_df: pandas DataFrame from Register sheet
@@ -817,9 +775,6 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
             logger.warning("No email column found in Register")
             return False
 
-        # Get all existing admin students
-        existing_students = get_all_admin_students()
-
         updates = []
         for _, row in register_df.iterrows():
             email = str(row.get(email_col, "")).strip()
@@ -827,14 +782,27 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
                 continue
 
             email_normalized = _normalize_email(email)
-            student_data = existing_students.get(email_normalized, {})
+            if not email_normalized:
+                continue
+
+            # Find Firebase user by email
+            uid = _find_user_by_email(email_normalized)
+            if not uid:
+                logger.debug(f"No Firebase user found for email: {email_normalized}")
+                continue
+
+            # Get existing user data
+            user_data = get_user_admin_data(uid)
+            if not user_data:
+                logger.debug(f"User {uid} not found in Firestore")
+                continue
 
             update_needed = False
-            update_data: Dict[str, Any] = {"email": email_normalized}
+            update_data: Dict[str, Any] = {"uid": uid}
 
             # Check Payment proved column (yes/no -> Paid/Unpaid)
             # Only set if admin hasn't already set a payment status
-            if payment_proved_col and not student_data.get("paymentStatus"):
+            if payment_proved_col and not user_data.get("paymentStatus"):
                 payment_proved_val = str(row.get(payment_proved_col, "")).strip().lower()
                 if payment_proved_val and payment_proved_val != "nan":
                     # Map yes/no to Paid/Unpaid
@@ -849,7 +817,7 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
             if payment_screenshot_col:
                 payment_val = str(row.get(payment_screenshot_col, "")).strip()
                 if payment_val and payment_val.lower() != "nan":
-                    if not student_data.get("paymentScreenshot"):
+                    if not user_data.get("paymentScreenshot"):
                         update_data["paymentScreenshot"] = payment_val
                         update_needed = True
 
@@ -857,7 +825,7 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
             if resume_col:
                 resume_val = str(row.get(resume_col, "")).strip()
                 if resume_val and resume_val.lower() != "nan":
-                    if not student_data.get("resumeLink"):
+                    if not user_data.get("resumeLink"):
                         update_data["resumeLink"] = resume_val
                         update_needed = True
 
@@ -865,8 +833,8 @@ def sync_payment_backups_to_firestore(register_df) -> bool:
                 updates.append(update_data)
 
         if updates:
-            success = bulk_update_admin_students(updates)
-            logger.info(f"Synced payment/resume backups for {len(updates)} students")
+            success = bulk_update_users_admin_data(updates)
+            logger.info(f"Synced payment/resume backups for {len(updates)} users")
             return success
 
         return True
@@ -955,7 +923,7 @@ def create_class(class_data: Dict[str, Any]) -> bool:
 
 def delete_class(class_id: str) -> bool:
     """
-    Delete class from Firestore.
+    Delete class from Firestore and remove attendance records for this class from all users.
 
     Args:
         class_id: Class identifier (document ID)
@@ -969,6 +937,7 @@ def delete_class(class_id: str) -> bool:
         return False
 
     try:
+        # First, verify the class exists
         doc_ref = client.collection(ADMIN_CLASSES_COLLECTION).document(class_id)
         doc = doc_ref.get()
 
@@ -976,12 +945,130 @@ def delete_class(class_id: str) -> bool:
             logger.warning(f"Class {class_id} not found")
             return False
 
+        # Remove attendance records for this class from all users
+        users_ref = client.collection(USERS_COLLECTION)
+        users_docs = users_ref.stream()
+        
+        batch = client.batch()
+        batch_count = 0
+        updated_count = 0
+        
+        for user_doc in users_docs:
+            user_data = user_doc.to_dict() or {}
+            attendance = user_data.get('attendance', {})
+            
+            # Check if this user has attendance for the deleted class
+            if isinstance(attendance, dict) and class_id in attendance:
+                # Remove the class_id from attendance by updating the entire attendance dict
+                updated_attendance = attendance.copy()
+                del updated_attendance[class_id]
+                
+                user_doc_ref = client.collection(USERS_COLLECTION).document(user_doc.id)
+                batch.update(user_doc_ref, {
+                    'attendance': updated_attendance,
+                    'updatedAt': datetime.now(timezone.utc)
+                })
+                batch_count += 1
+                updated_count += 1
+                
+                # Commit batch if it reaches the limit (500 operations per batch)
+                if batch_count >= 500:
+                    batch.commit()
+                    batch = client.batch()
+                    batch_count = 0
+        
+        # Commit remaining updates
+        if batch_count > 0:
+            batch.commit()
+        
+        if updated_count > 0:
+            logger.info(f"Removed attendance records for class {class_id} from {updated_count} users")
+        
+        # Now delete the class document
         doc_ref.delete()
         logger.info(f"Deleted class: {class_id}")
         return True
     except Exception as exc:
         logger.error(f"Error deleting class {class_id}: {exc}", exc_info=True)
         return False
+
+
+# ---------------------------------------------------------------------------
+# Helper Functions
+# ---------------------------------------------------------------------------
+
+
+def _ensure_user_admin_fields(uid: str, course_module_structure: Optional[Dict[str, Dict[str, int]]] = None) -> None:
+    """
+    Ensure user document has admin fields initialized.
+    
+    Args:
+        uid: Firebase user UID
+        course_module_structure: Optional course/module structure for initializing assignment fields
+            If None, will fetch from Firestore course data
+    """
+    client = _get_firestore_client()
+    if not client:
+        return
+    
+    try:
+        doc_ref = client.collection(USERS_COLLECTION).document(uid)
+        doc = doc_ref.get()
+        
+        if not doc.exists:
+            return
+        
+        existing_data = doc.to_dict() or {}
+        needs_update = False
+        update_data: Dict[str, Any] = {}
+        
+        # Initialize attendance if missing
+        if 'attendance' not in existing_data:
+            update_data['attendance'] = {}
+            needs_update = True
+        
+        # Initialize assignmentGrades if missing
+        if 'assignmentGrades' not in existing_data:
+            # Get course/module structure if not provided
+            if course_module_structure is None:
+                from firestore.course_data import get_course_data as get_course_data_from_firestore
+                from students.student_helpers import get_course_module_structure
+                course_data = get_course_data_from_firestore()
+                course_module_structure = get_course_module_structure(course_data)
+            
+            if course_module_structure:
+                # Initialize with empty structure
+                assignment_grades = {}
+                for course_id, modules in course_module_structure.items():
+                    assignment_grades[course_id] = {}
+                    for module_id, lab_count in modules.items():
+                        assignment_grades[course_id][module_id] = {}
+                        for lab_num in range(1, lab_count + 1):
+                            assignment_grades[course_id][module_id][f"lab{lab_num}"] = ""
+                update_data['assignmentGrades'] = assignment_grades
+            else:
+                update_data['assignmentGrades'] = {}
+            needs_update = True
+        
+        # Initialize other fields if missing
+        if 'teacherEvaluation' not in existing_data:
+            update_data['teacherEvaluation'] = ''
+            needs_update = True
+        
+        if 'paymentStatus' not in existing_data:
+            update_data['paymentStatus'] = ''
+            needs_update = True
+        
+        if 'paymentComment' not in existing_data:
+            update_data['paymentComment'] = ''
+            needs_update = True
+        
+        if needs_update:
+            update_data['updatedAt'] = datetime.now(timezone.utc)
+            doc_ref.update(update_data)
+            logger.debug(f"Initialized admin fields for user: {uid}")
+    except Exception as exc:
+        logger.error(f"Error ensuring admin fields for {uid}: {exc}", exc_info=True)
 
 
 # ---------------------------------------------------------------------------
@@ -1024,9 +1111,9 @@ def sync_assignment_fields_to_lab_count(course_module_structure: Optional[Dict[s
     stats = {'added': 0, 'removed': 0, 'updated': 0, 'errors': 0}
     
     try:
-        # Get all admin students
-        students_ref = client.collection(ADMIN_STUDENTS_COLLECTION)
-        docs = students_ref.stream()
+        # Get all users
+        users_ref = client.collection(USERS_COLLECTION)
+        docs = users_ref.stream()
         
         batch = client.batch()
         batch_count = 0
@@ -1038,11 +1125,7 @@ def sync_assignment_fields_to_lab_count(course_module_structure: Optional[Dict[s
                 if not data:
                     continue
                 
-                # Use email from document data (which is the document ID) for consistency
-                email_normalized = data.get('email', '')
-                if not email_normalized:
-                    # Fallback to document ID if email field is missing
-                    email_normalized = doc.id
+                uid = doc.id  # Use UID as document ID
                 
                 existing_grades = data.get('assignmentGrades', {})
                 if not isinstance(existing_grades, dict):
@@ -1086,8 +1169,7 @@ def sync_assignment_fields_to_lab_count(course_module_structure: Optional[Dict[s
                 
                 # Update document if changes were made
                 if updated:
-                    # Use email_normalized (document ID) for consistency
-                    doc_ref = client.collection(ADMIN_STUDENTS_COLLECTION).document(email_normalized)
+                    doc_ref = client.collection(USERS_COLLECTION).document(uid)
                     batch.update(doc_ref, {
                         'assignmentGrades': updated_grades,
                         'updatedAt': datetime.now(timezone.utc)
@@ -1107,7 +1189,7 @@ def sync_assignment_fields_to_lab_count(course_module_structure: Optional[Dict[s
                         batch_count = 0
                         
             except Exception as e:
-                logger.error(f"Error processing student document {doc.id}: {e}", exc_info=True)
+                logger.error(f"Error processing user document {doc.id}: {e}", exc_info=True)
                 stats['errors'] += 1
         
         # Commit remaining batch

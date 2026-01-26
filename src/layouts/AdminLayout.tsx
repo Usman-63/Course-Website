@@ -11,7 +11,8 @@ import {
   Menu as MenuIcon, 
   X,
   Loader2,
-  ArrowLeft
+  ArrowLeft,
+  Calendar
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { clearAuthToken, isAdminLoggedIn, getFirebaseToken } from '../services/api';
@@ -23,6 +24,7 @@ const navigation = [
   { name: 'Course Content', href: '/admin/content', icon: BookOpen },
   { name: 'Students', href: '/admin/students', icon: Users }, // CRM
   { name: 'Operations', href: '/admin/operations', icon: TableProperties }, // Operations
+  { name: 'Attendance', href: '/admin/attendance', icon: Calendar },
   { name: 'Engagement', href: '/admin/engagement', icon: Megaphone },
 ];
 

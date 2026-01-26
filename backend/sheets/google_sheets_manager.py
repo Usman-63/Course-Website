@@ -15,29 +15,21 @@ import gspread
 import gspread.exceptions
 
 from core.logger import logger
-from firestore.operations_cache import (
-    get_metrics_from_firestore,
-    get_students_list_from_firestore,
-    sync_students_to_firestore,
-)
 from firestore.admin_data import (
-    get_all_admin_students,
-    create_admin_student,
-    sync_payment_backups_to_firestore,
     get_all_classes,
     create_class,
     delete_class,
+    get_all_users_admin_data,
+    update_user_admin_data_by_email,
+    bulk_update_users_admin_data,
+    sync_payment_backups_to_firestore,
 )
 from sheets.sheets_utils import (
-    merge_register_survey,
-    merge_with_admin_logs,
     format_attendance,
     format_attendance_to_string,
-    detect_new_students,
     normalize_dataframe,
     prepare_student_for_display,
 )
-from students.student_helpers import calculate_student_metrics
 
 
 class GoogleSheetsManager:
@@ -384,33 +376,36 @@ class GoogleSheetsManager:
         Read admin student data from Firestore and convert to DataFrame format.
         
         This replaces the old read_admin_logs() method. Converts Firestore format
-        to DataFrame compatible with merge_with_admin_logs().
+        to DataFrame for admin data operations.
         
         Returns:
             DataFrame with columns: Email Address, Name, Attendance, Assignment N Grade, 
             Teacher Evaluation, Payment Screenshot, Resume Link
         """
         try:
-            # Get all admin students from Firestore
-            admin_students = get_all_admin_students()
+            # Get all users with admin data from Firestore
+            users = get_all_users_admin_data()
             
-            if not admin_students:
-                logger.debug("No admin students found in Firestore")
+            if not users:
+                logger.debug("No users found in Firestore")
                 return pd.DataFrame()
             
-            # Convert to list of dicts compatible with merge_with_admin_logs expectations
+            # Convert to list of dicts for DataFrame conversion
             rows = []
-            for email, student_data in admin_students.items():
+            for user_data in users:
+                email = user_data.get('email', '')
+                if not email:
+                    continue
                 row = {
                     'Email Address': email,
                 }
                 
                 # Name
-                if 'name' in student_data:
-                    row['Name'] = student_data['name']
+                if 'name' in user_data:
+                    row['Name'] = user_data['name']
                 
                 # Attendance (convert dict to JSON string)
-                attendance = student_data.get('attendance', {})
+                attendance = user_data.get('attendance', {})
                 if isinstance(attendance, dict):
                     import json
                     row['Attendance'] = json.dumps(attendance)
@@ -418,7 +413,7 @@ class GoogleSheetsManager:
                     row['Attendance'] = str(attendance) if attendance else '{}'
                 
                 # Assignment grades (convert per-course/module structure to flat format)
-                assignment_grades = student_data.get('assignmentGrades', {})
+                assignment_grades = user_data.get('assignmentGrades', {})
                 if isinstance(assignment_grades, dict):
                     # Check if it's the new nested structure (course -> module -> lab)
                     is_new_format = False
@@ -469,23 +464,23 @@ class GoogleSheetsManager:
                             row[grade_key] = str(grade_value) if grade_value else ''
                 
                 # Teacher Evaluation (always include, even if empty)
-                row['Teacher Evaluation'] = student_data.get('teacherEvaluation', '')
+                row['Teacher Evaluation'] = user_data.get('teacherEvaluation', '')
                 
                 # Payment Status (admin-set, takes priority)
-                if 'paymentStatus' in student_data:
-                    row['Payment Status'] = student_data['paymentStatus']
+                if 'paymentStatus' in user_data:
+                    row['Payment Status'] = user_data['paymentStatus']
                 
                 # Payment Comment
-                if 'paymentComment' in student_data:
-                    row['Payment Comment'] = student_data['paymentComment']
+                if 'paymentComment' in user_data:
+                    row['Payment Comment'] = user_data['paymentComment']
                 
                 # Payment Screenshot
-                if 'paymentScreenshot' in student_data:
-                    row['Payment Screenshot'] = student_data['paymentScreenshot']
+                if 'paymentScreenshot' in user_data:
+                    row['Payment Screenshot'] = user_data['paymentScreenshot']
                 
                 # Resume Link
-                if 'resumeLink' in student_data:
-                    row['Resume Link'] = student_data['resumeLink']
+                if 'resumeLink' in user_data:
+                    row['Resume Link'] = user_data['resumeLink']
                 
                 rows.append(row)
             
@@ -510,244 +505,173 @@ class GoogleSheetsManager:
         logger.warning("read_admin_logs() is deprecated, using Firestore instead")
         return self.get_admin_data_from_firestore()
     
+    def get_register_students(
+        self,
+        force_refresh: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get Register form data only (no merging).
+        
+        Returns:
+            List of student dictionaries from Register form
+        """
+        cache_key = f"register_students_{self.register_spreadsheet_id}"
+        
+        if force_refresh:
+            with self._read_lock:
+                if cache_key in self._cache:
+                    del self._cache[cache_key]
+                if f"register_{self.register_spreadsheet_id}" in self._cache:
+                    del self._cache[f"register_{self.register_spreadsheet_id}"]
+        
+        with self._read_lock:
+            cached_data, cache_time = self._get_cached_data(cache_key)
+            if cached_data is not None and not force_refresh:
+                logger.debug(f"Returning cached Register data (age: {time.time() - cache_time:.1f}s)")
+                return cached_data
+        
+        try:
+            # Read Register spreadsheet
+            register_df = self.read_register_data()
+            
+            if register_df.empty:
+                logger.debug("Register spreadsheet is empty")
+                return []
+            
+            # Sort by Name (if available) or Email Address
+            if 'Name' in register_df.columns:
+                register_df = register_df.sort_values('Name', na_position='last')
+            elif 'Email Address' in register_df.columns:
+                register_df = register_df.sort_values('Email Address', na_position='last')
+            
+            # Convert to list of dictionaries
+            students = []
+            for _, row in register_df.iterrows():
+                student_dict = prepare_student_for_display(row)
+                students.append(student_dict)
+            
+            # Cache the result
+            with self._read_lock:
+                self._set_cached_data(cache_key, students)
+            
+            logger.info(f"Successfully loaded {len(students)} Register form entries")
+            return students
+            
+        except Exception as e:
+            logger.error(f"Error getting Register students: {str(e)}", exc_info=True)
+            raise
+    
+    def get_survey_students(
+        self,
+        force_refresh: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Get Survey form data only (no merging).
+        
+        Returns:
+            List of student dictionaries from Survey form
+        """
+        cache_key = f"survey_students_{self.survey_spreadsheet_id}"
+        
+        if force_refresh:
+            with self._read_lock:
+                if cache_key in self._cache:
+                    del self._cache[cache_key]
+                if f"survey_{self.survey_spreadsheet_id}" in self._cache:
+                    del self._cache[f"survey_{self.survey_spreadsheet_id}"]
+        
+        with self._read_lock:
+            cached_data, cache_time = self._get_cached_data(cache_key)
+            if cached_data is not None and not force_refresh:
+                logger.debug(f"Returning cached Survey data (age: {time.time() - cache_time:.1f}s)")
+                return cached_data
+        
+        try:
+            # Read Survey spreadsheet
+            survey_df = self.read_survey_data()
+            
+            if survey_df.empty:
+                logger.debug("Survey spreadsheet is empty")
+                return []
+            
+            # Sort by Name (if available) or Email Address
+            if 'Name' in survey_df.columns:
+                survey_df = survey_df.sort_values('Name', na_position='last')
+            elif 'Email Address' in survey_df.columns:
+                survey_df = survey_df.sort_values('Email Address', na_position='last')
+            
+            # Convert to list of dictionaries
+            students = []
+            for _, row in survey_df.iterrows():
+                student_dict = prepare_student_for_display(row)
+                students.append(student_dict)
+            
+            # Cache the result
+            with self._read_lock:
+                self._set_cached_data(cache_key, students)
+            
+            logger.info(f"Successfully loaded {len(students)} Survey form entries")
+            return students
+            
+        except Exception as e:
+            logger.error(f"Error getting Survey students: {str(e)}", exc_info=True)
+            raise
+    
     def get_all_students(
         self,
         use_firestore_cache: bool = True,
         force_refresh: bool = False,
     ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
-        Merge all three spreadsheets and return complete student data.
+        DEPRECATED: This method is deprecated. Use get_register_students() or get_survey_students() instead.
         
-        Steps:
-        1. Merge Register + Survey (Register is primary, Survey data added)
-        2. Merge result with Firestore admin data
-        3. Return list of student dictionaries
-        
-        Uses locking to prevent concurrent reads and race conditions.
+        Returns empty list for backward compatibility.
         """
-        # 1. Try Firestore cache first (if enabled and not force-refresh)
-        if use_firestore_cache and not force_refresh:
-            try:
-                fs_students = get_students_list_from_firestore()
-                fs_metrics = get_metrics_from_firestore()
-                if fs_students is not None and fs_metrics is not None:
-                    logger.info(
-                        f"Returning {len(fs_students)} students from Firestore cache"
-                    )
-                    return fs_students, fs_metrics
-            except Exception as e:  # pragma: no cover - defensive
-                logger.warning(
-                    f"Failed to read students from Firestore cache, falling back to Sheets: {e}"
-                )
-
-        # 2. Fallback to in-process cache + Sheets merge
-        cache_key = "all_students"
-
-        if force_refresh:
-            logger.info("Force refresh requested: Clearing all student data caches")
-            with self._read_lock:
-                # Clear all related caches to ensure fresh data from all sheets
-                keys_to_clear = [
-                    cache_key,
-                    f"survey_{self.survey_spreadsheet_id}",
-                    f"register_{self.register_spreadsheet_id}",
-                ]
-                for key in keys_to_clear:
-                    if key in self._cache:
-                        del self._cache[key]
-        
-        with self._read_lock:
-            cached_data, cache_time = self._get_cached_data(cache_key)
-            if cached_data is not None and not force_refresh:
-                logger.debug(
-                    f"Returning cached student data (age: {time.time() - cache_time:.1f}s)"
-                )
-                # When using in-memory cache, recompute metrics cheaply from cached students
-                metrics = calculate_student_metrics(cached_data)
-                return cached_data, metrics
-            
-            # If another thread is already reading, wait for it
-            if self._reading_students:
-                logger.warning("Another request is already reading students, waiting...")
-                # Wait a bit and check cache again
-                self._read_lock.release()
-                time.sleep(0.5)
-                self._read_lock.acquire()
-                cached_data, cache_time = self._get_cached_data(cache_key)
-                if cached_data is not None:
-                    logger.debug(
-                        f"Returning cached student data after wait (age: {time.time() - cache_time:.1f}s)"
-                    )
-                    metrics = calculate_student_metrics(cached_data)
-                    return cached_data, metrics
-            
-            # Mark that we're reading
-            self._reading_students = True
-        
-        try:
-            # Read Register and Survey spreadsheets (read-only)
-            register_df = self.read_register_data()
-            survey_df = self.read_survey_data()
-            
-            # Read admin data from Firestore
-            admin_logs_df = self.get_admin_data_from_firestore()
-            
-            if register_df.empty and survey_df.empty:
-                logger.warning(
-                    "Both Register and Survey spreadsheets are empty, returning empty list"
-                )
-                return [], {}
-            
-            # Step 1: Merge Register + Survey
-            merged_df = merge_register_survey(register_df, survey_df)
-            
-            # Step 2: Merge with Firestore admin data (with dynamic assignment grades)
-            # Get total labs from course data to determine number of assignment grades needed
-            total_labs = self._get_total_labs_count()
-            
-            # Check for new students and auto-create in Firestore
-            new_student_emails = detect_new_students(merged_df, admin_logs_df)
-            if new_student_emails:
-                logger.info(f"Detected {len(new_student_emails)} new students. Creating in Firestore...")
-                # Get existing admin students to avoid duplicates
-                existing_admin = get_all_admin_students()
-                for email in new_student_emails:
-                    # Normalize and validate email
-                    email_normalized = email.lower().strip() if email else ""
-                    # Skip empty or invalid emails
-                    if not email_normalized or len(email_normalized) < 3 or '@' not in email_normalized:
-                        logger.warning(f"Skipping invalid email in new students list: {email}")
-                        continue
-                    
-                    if email_normalized not in existing_admin:
-                        # Get student data from merged_df for initial values
-                        email_col = 'Email Address'
-                        if email_col in merged_df.columns:
-                            student_row = merged_df[merged_df[email_col] == email]
-                            if not student_row.empty:
-                                initial_data = {}
-                                # Extract name if available
-                                if 'Name' in student_row.columns:
-                                    name_val = student_row.iloc[0].get('Name')
-                                    if pd.notna(name_val):
-                                        initial_data['name'] = str(name_val)
-                                # Extract payment screenshot if available
-                                if 'Add Payment Screenshot' in student_row.columns:
-                                    screenshot_val = student_row.iloc[0].get('Add Payment Screenshot')
-                                    if pd.notna(screenshot_val) and str(screenshot_val).strip():
-                                        initial_data['paymentScreenshot'] = str(screenshot_val)
-                                
-                                # Extract Payment proved status if available (yes/no -> Paid/Unpaid)
-                                payment_proved_cols = [c for c in student_row.columns if 'payment' in str(c).lower() and 'proved' in str(c).lower()]
-                                if payment_proved_cols:
-                                    payment_proved_val = str(student_row.iloc[0].get(payment_proved_cols[0], "")).strip().lower()
-                                    if payment_proved_val and payment_proved_val != 'nan':
-                                        if payment_proved_val == 'yes':
-                                            initial_data['paymentStatus'] = 'Paid'
-                                        elif payment_proved_val == 'no':
-                                            initial_data['paymentStatus'] = 'Unpaid'
-                                
-                                # Extract resume link if available
-                                resume_cols = [c for c in student_row.columns if 'resume' in str(c).lower()]
-                                if resume_cols:
-                                    resume_val = student_row.iloc[0].get(resume_cols[0])
-                                    if pd.notna(resume_val) and str(resume_val).strip():
-                                        initial_data['resumeLink'] = str(resume_val)
-                                
-                                success = create_admin_student(email, initial_data)
-                                if not success:
-                                    logger.warning(f"Failed to create admin student document for: {email}")
-            
-            # Step 3.5: Sync payment screenshots/resumes from Register to Firestore
-            # This ensures that if a student registered via form, their payment/resume is backed up
-            sync_payment_backups_to_firestore(register_df)
-            
-            # Re-read admin data after potential updates
-            admin_logs_df = self.get_admin_data_from_firestore()
-            
-            final_df = merge_with_admin_logs(merged_df, admin_logs_df, total_labs=total_labs)
-
-            # Deduplicate by normalized email so one student appears only once.
-            # Instead of just dropping duplicates (which can lose data),
-            # we coalesce rows for the same normalized email by taking the
-            # last non-null value per column.
-            if 'Email Address' in final_df.columns:
-                final_df['__email_norm__'] = (
-                    final_df['Email Address']
-                    .astype(str)
-                    .str.strip()
-                    .str.lower()
-                )
-
-                def _coalesce_group(group: pd.DataFrame) -> pd.Series:
-                    # For each column, take the last non-null value if available,
-                    # otherwise leave it as NA.
-                    return group.apply(
-                        lambda col: col.dropna().iloc[-1] if not col.dropna().empty else pd.NA
-                    )
-
-                # Group by normalized email and coalesce columns
-                final_df = (
-                    final_df
-                    .groupby('__email_norm__', as_index=False)
-                    .apply(_coalesce_group)
-                    .reset_index(drop=True)
-                )
-
-                # Drop helper column
-                if '__email_norm__' in final_df.columns:
-                    final_df = final_df.drop(columns=['__email_norm__'])
-            
-            # Sort by Name (if available) or Email Address
-            if 'Name' in final_df.columns:
-                final_df = final_df.sort_values('Name', na_position='last')
-            elif 'Email Address' in final_df.columns:
-                final_df = final_df.sort_values('Email Address', na_position='last')
-            
-            # Convert to list of dictionaries
-            students = []
-            for _, row in final_df.iterrows():
-                student_dict = prepare_student_for_display(row)
-                students.append(student_dict)
-
-            # Compute metrics from merged student data
-            metrics = calculate_student_metrics(students)
-
-            # Attempt to sync to Firestore (non-fatal if it fails)
-            if use_firestore_cache:
-                try:
-                    sync_ok = sync_students_to_firestore(students, metrics)
-                    if not sync_ok:
-                        logger.warning("Failed to sync students to Firestore cache")
-                except Exception as sync_err:  # pragma: no cover - defensive
-                    logger.error(
-                        f"Unexpected error syncing students to Firestore: {sync_err}",
-                        exc_info=True,
-                    )
-
-            # Cache the result
-            with self._read_lock:
-                self._set_cached_data(cache_key, students)
-                self._reading_students = False
-            
-            logger.info(f"Successfully merged data for {len(students)} students")
-            return students, metrics
-            
-        except Exception as e:
-            # Release lock on error
-            with self._read_lock:
-                self._reading_students = False
-            logger.error(f"Error getting all students: {str(e)}", exc_info=True)
-            raise
+        logger.warning("get_all_students() is deprecated. Use get_register_students() or get_survey_students() instead.")
+        return [], {}
     
-    def get_student_by_email(self, email: str) -> Optional[Dict[str, Any]]:
-        """Get specific student data by email address."""
+    def get_student_by_email(self, email: str, source: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """
+        Get specific student data by email address from Register or Survey.
+        
+        Args:
+            email: Email address to search for
+            source: 'register', 'survey', or None to search both (default: None)
+        
+        Returns:
+            Student dictionary if found, None otherwise
+        """
         try:
-            students, _metrics = self.get_all_students()
             email_lower = email.lower().strip()
             
+            if source == 'register':
+                students = self.get_register_students()
+            elif source == 'survey':
+                students = self.get_survey_students()
+            else:
+                # Search both if source not specified
+                register_students = self.get_register_students()
+                for student in register_students:
+                    student_email = None
+                    for key in ['Email Address', 'Email', 'email', 'email_address']:
+                        if key in student and student[key]:
+                            student_email = str(student[key]).lower().strip()
+                            break
+                    if student_email == email_lower:
+                        return student
+                
+                survey_students = self.get_survey_students()
+                for student in survey_students:
+                    student_email = None
+                    for key in ['Email Address', 'Email', 'email', 'email_address']:
+                        if key in student and student[key]:
+                            student_email = str(student[key]).lower().strip()
+                            break
+                    if student_email == email_lower:
+                        return student
+                return None
+            
             for student in students:
-                # Find email column
                 student_email = None
                 for key in ['Email Address', 'Email', 'email', 'email_address']:
                     if key in student and student[key]:
@@ -765,21 +689,38 @@ class GoogleSheetsManager:
     
     def initialize_student_row(self, email: str, student_data: Dict[str, Any]) -> bool:
         """
-        Create new admin student document in Firestore.
+        Initialize admin fields for a Firebase user (if user exists).
         
         Args:
             email: Student email address
             student_data: Student data from Survey/Register (for reference)
             
         Returns:
-            True if successful
+            True if successful (or user doesn't exist - not an error)
         """
         try:
-            # Prepare initial data from student_data if provided
-            initial_data = {}
+            # Find Firebase user by email
+            from firestore.admin_data import _find_user_by_email, get_user_admin_data, _ensure_user_admin_fields
+            uid = _find_user_by_email(email)
             
-            # Extract name if available
-            if student_data:
+            if not uid:
+                logger.debug(f"No Firebase user found for email: {email}")
+                return True  # Not an error - user might not be registered yet
+            
+            # Ensure admin fields are initialized
+            _ensure_user_admin_fields(uid)
+            
+            # Get existing user data
+            user_data = get_user_admin_data(uid)
+            if not user_data:
+                logger.debug(f"User {uid} not found in Firestore")
+                return True
+            
+            # Prepare updates from student_data if provided
+            updates: Dict[str, Any] = {}
+            
+            # Extract name if available and not already set
+            if student_data and not user_data.get('name'):
                 name = (
                     student_data.get('Name') 
                     or student_data.get('Student Name') 
@@ -787,48 +728,53 @@ class GoogleSheetsManager:
                     or (student_data.get('First Name', '') + ' ' + student_data.get('Last Name', '')).strip()
                 )
                 if name and name.strip():
-                    initial_data['name'] = name.strip()
-                
-                # Extract payment screenshot if available
+                    updates['name'] = name.strip()
+            
+            # Extract payment screenshot if available and not already set
+            if student_data and not user_data.get('paymentScreenshot'):
                 payment_screenshot = (
                     student_data.get('Add Payment Screenshot')
                     or student_data.get('Payment Screenshot')
                     or student_data.get('paymentScreenshot')
                 )
                 if payment_screenshot and str(payment_screenshot).strip() and str(payment_screenshot).lower() != 'nan':
-                    initial_data['paymentScreenshot'] = str(payment_screenshot).strip()
-                
-                # Extract Payment proved status if available (yes/no -> Paid/Unpaid)
+                    updates['paymentScreenshot'] = str(payment_screenshot).strip()
+            
+            # Extract Payment proved status if available and not already set
+            if student_data and not user_data.get('paymentStatus'):
                 payment_proved_cols = [k for k in student_data.keys() if 'payment' in str(k).lower() and 'proved' in str(k).lower()]
                 if payment_proved_cols:
                     payment_proved_val = str(student_data.get(payment_proved_cols[0], "")).strip().lower()
                     if payment_proved_val and payment_proved_val != 'nan':
                         if payment_proved_val == 'yes':
-                            initial_data['paymentStatus'] = 'Paid'
+                            updates['paymentStatus'] = 'Paid'
                         elif payment_proved_val == 'no':
-                            initial_data['paymentStatus'] = 'Unpaid'
-                
-                # Extract resume link if available
+                            updates['paymentStatus'] = 'Unpaid'
+            
+            # Extract resume link if available and not already set
+            if student_data and not user_data.get('resumeLink'):
                 resume_link = (
                     student_data.get('Resume Link')
                     or student_data.get('resumeLink')
                     or student_data.get('Upload your Resume / CV (PDF preferred)')
                 )
                 if resume_link and str(resume_link).strip() and str(resume_link).lower() != 'nan':
-                    initial_data['resumeLink'] = str(resume_link).strip()
+                    updates['resumeLink'] = str(resume_link).strip()
             
-            # Create admin student in Firestore
-            success = create_admin_student(email, initial_data)
+            # Update if there are changes
+            if updates:
+                from firestore.admin_data import update_user_admin_data
+                success = update_user_admin_data(uid, updates)
+                if success:
+                    logger.info(f"Initialized admin fields for user: {email}")
+                else:
+                    logger.warning(f"Failed to initialize admin fields for user: {email}")
+                return success
             
-            if success:
-                logger.info(f"Created admin student document in Firestore: {email}")
-            else:
-                logger.warning(f"Failed to create admin student document: {email}")
-            
-            return success
+            return True
             
         except Exception as e:
-            logger.error(f"Error creating admin student document: {str(e)}", exc_info=True)
+            logger.error(f"Error initializing admin fields for user: {str(e)}", exc_info=True)
             raise
     
     def update_student_data(self, email: str, updates: Dict[str, Any]) -> bool:
@@ -851,16 +797,10 @@ class GoogleSheetsManager:
                 raise ValueError("No updates provided")
             
             # Use Firestore admin_data module
-            from firestore.admin_data import update_admin_student, get_admin_student
+            from firestore.admin_data import update_user_admin_data_by_email
             
-            # Check if student exists, create if not
-            existing = get_admin_student(email)
-            if not existing:
-                logger.info(f"Student {email} not in Firestore admin data, creating...")
-                create_admin_student(email, {})
-            
-            # Update via Firestore
-            success = update_admin_student(email, updates)
+            # Update via Firestore (will find user by email)
+            success = update_user_admin_data_by_email(email, updates)
             
             if success:
                 logger.info(f"Updated Firestore admin data for student: {email}")
@@ -890,10 +830,10 @@ class GoogleSheetsManager:
         Bulk update admin data in Firestore for multiple students.
         """
         try:
-            from firestore.admin_data import bulk_update_admin_students
+            from firestore.admin_data import bulk_update_users_admin_data
             
-            # Use Firestore bulk update
-            result = bulk_update_admin_students(updates)
+            # Use Firestore bulk update (supports both uid and email in updates)
+            result = bulk_update_users_admin_data(updates)
             
             success = result.get('success', False)
             if success:
@@ -1019,47 +959,35 @@ class GoogleSheetsManager:
             # Normalize present_emails for comparison
             present_emails_set = {email.lower().strip() for email in present_emails if email}
             
-            # 1. Try to use cached students data first (much faster)
-            # Check if we have recent cached data
-            cache_key = 'all_students'
-            cached_data = self._cache.get(cache_key)
-            cache_time = self._cache.get(f'{cache_key}_time', 0)
-            current_time = time.time()
+            # 1. Fetch all Firebase users with admin data
+            users = get_all_users_admin_data()
             
-            if cached_data and (current_time - cache_time) < self._cache_ttl:
-                logger.debug(f"Using cached students data for attendance marking (age: {current_time - cache_time:.1f}s)")
-                students = cached_data
-            else:
-                # Fallback to fetching if cache is stale or missing
-                logger.debug("Cache miss or stale, fetching fresh students data")
-                students, _metrics = self.get_all_students()
+            logger.info(f"Found {len(users)} total users to check")
             
-            logger.info(f"Found {len(students)} total students to check")
-            
-            if not students:
-                logger.warning("No students found to mark attendance")
+            if not users:
+                logger.warning("No users found to mark attendance")
                 return {
                     'success': False,
                     'status': 'failed',
                     'updated': 0,
                     'skipped': 0,
-                    'message': 'No students found to mark attendance'
+                    'message': 'No users found to mark attendance'
                 }
             
             # 2. Build updates with idempotency check - only update if attendance actually changed
             updates = []
             skipped_count = 0
             
-            for student in students:
-                email = student.get('Email Address', '')
+            for user in users:
+                email = user.get('email', '')
                 if not email:
-                    logger.debug("Skipping student with no email")
+                    logger.debug("Skipping user with no email")
                     continue
                 
                 email_normalized = email.lower().strip()
                 
-                # Get current attendance (already parsed as dict by get_all_students)
-                attendance = student.get('Attendance')
+                # Get current attendance
+                attendance = user.get('attendance', {})
                 if not isinstance(attendance, dict):
                     attendance = {}
                 
@@ -1162,17 +1090,18 @@ class GoogleSheetsManager:
 
     def bulk_add_students_to_admin_logs(self, new_students_df: pd.DataFrame) -> bool:
         """
-        Bulk create new admin student documents in Firestore.
+        Bulk initialize admin fields for Firebase users from new students DataFrame.
         """
         try:
             if new_students_df.empty:
                 return True
             
-            # Get existing admin students to avoid duplicates
-            existing_admin = get_all_admin_students()
+            # Get existing users to check
+            existing_users = get_all_users_admin_data()
+            existing_emails = {user.get('email', '').lower() for user in existing_users if user.get('email')}
             
             # Prepare updates for Firestore
-            students_to_create = []
+            updates = []
             
             for _, student_row in new_students_df.iterrows():
                 student_dict = student_row.to_dict()
@@ -1183,79 +1112,92 @@ class GoogleSheetsManager:
                 
                 email_normalized = email.lower().strip()
                 
-                # Skip if already exists
-                if email_normalized in existing_admin:
+                # Find Firebase user by email
+                from firestore.admin_data import _find_user_by_email
+                uid = _find_user_by_email(email_normalized)
+                
+                if not uid:
+                    logger.debug(f"No Firebase user found for email: {email}")
                     continue
                 
-                # Prepare initial data
-                initial_data = {}
+                # Get existing user data
+                from firestore.admin_data import get_user_admin_data
+                user_data = get_user_admin_data(uid)
+                if not user_data:
+                    logger.debug(f"User {uid} not found in Firestore")
+                    continue
                 
-                # Extract name
-                name = (
-                    student_dict.get('Name')
-                    or student_dict.get('Student Name')
-                    or student_dict.get('Full Name')
-                )
-                if name and pd.notna(name) and str(name).strip():
-                    initial_data['name'] = str(name).strip()
+                # Prepare update data (only set if not already set)
+                update_data: Dict[str, Any] = {'uid': uid}
                 
-                # Extract payment screenshot
-                payment_screenshot = (
-                    student_dict.get('Add Payment Screenshot')
-                    or student_dict.get('Payment Screenshot')
-                    or student_dict.get('paymentScreenshot')
-                )
-                if payment_screenshot and pd.notna(payment_screenshot) and str(payment_screenshot).strip() and str(payment_screenshot).lower() != 'nan':
-                    initial_data['paymentScreenshot'] = str(payment_screenshot).strip()
+                # Extract name if not already set
+                if not user_data.get('name'):
+                    name = (
+                        student_dict.get('Name')
+                        or student_dict.get('Student Name')
+                        or student_dict.get('Full Name')
+                    )
+                    if name and pd.notna(name) and str(name).strip():
+                        update_data['name'] = str(name).strip()
                 
-                # Extract Payment proved status if available (yes/no -> Paid/Unpaid)
-                payment_proved_cols = [k for k in student_dict.keys() if 'payment' in str(k).lower() and 'proved' in str(k).lower()]
-                if payment_proved_cols:
-                    payment_proved_val = str(student_dict.get(payment_proved_cols[0], "")).strip().lower()
-                    if payment_proved_val and payment_proved_val != 'nan':
-                        if payment_proved_val == 'yes':
-                            initial_data['paymentStatus'] = 'Paid'
-                        elif payment_proved_val == 'no':
-                            initial_data['paymentStatus'] = 'Unpaid'
+                # Extract payment screenshot if not already set
+                if not user_data.get('paymentScreenshot'):
+                    payment_screenshot = (
+                        student_dict.get('Add Payment Screenshot')
+                        or student_dict.get('Payment Screenshot')
+                        or student_dict.get('paymentScreenshot')
+                    )
+                    if payment_screenshot and pd.notna(payment_screenshot) and str(payment_screenshot).strip() and str(payment_screenshot).lower() != 'nan':
+                        update_data['paymentScreenshot'] = str(payment_screenshot).strip()
                 
-                # Extract resume link
-                resume_link = (
-                    student_dict.get('Resume Link')
-                    or student_dict.get('resumeLink')
-                    or student_dict.get('Upload your Resume / CV (PDF preferred)')
-                )
-                if resume_link and pd.notna(resume_link) and str(resume_link).strip() and str(resume_link).lower() != 'nan':
-                    initial_data['resumeLink'] = str(resume_link).strip()
+                # Extract Payment proved status if available and not already set
+                if not user_data.get('paymentStatus'):
+                    payment_proved_cols = [k for k in student_dict.keys() if 'payment' in str(k).lower() and 'proved' in str(k).lower()]
+                    if payment_proved_cols:
+                        payment_proved_val = str(student_dict.get(payment_proved_cols[0], "")).strip().lower()
+                        if payment_proved_val and payment_proved_val != 'nan':
+                            if payment_proved_val == 'yes':
+                                update_data['paymentStatus'] = 'Paid'
+                            elif payment_proved_val == 'no':
+                                update_data['paymentStatus'] = 'Unpaid'
                 
-                # Create student in Firestore
-                success = create_admin_student(email, initial_data)
-                if success:
-                    students_to_create.append(email)
-                    # Update existing_admin to avoid duplicates in same batch
-                    existing_admin[email_normalized] = {}
+                # Extract resume link if not already set
+                if not user_data.get('resumeLink'):
+                    resume_link = (
+                        student_dict.get('Resume Link')
+                        or student_dict.get('resumeLink')
+                        or student_dict.get('Upload your Resume / CV (PDF preferred)')
+                    )
+                    if resume_link and pd.notna(resume_link) and str(resume_link).strip() and str(resume_link).lower() != 'nan':
+                        update_data['resumeLink'] = str(resume_link).strip()
+                
+                # Only add if there are updates
+                if len(update_data) > 1:  # More than just 'uid'
+                    updates.append(update_data)
             
-            if students_to_create:
-                logger.info(f"Created {len(students_to_create)} new admin student documents in Firestore")
+            if updates:
+                result = bulk_update_users_admin_data(updates)
+                logger.info(f"Initialized admin fields for {len(updates)} users in Firestore")
                 # Clear cache
                 if 'all_students' in self._cache:
                     del self._cache['all_students']
             
             return True
         except Exception as e:
-            logger.error(f"Error creating admin student documents in Firestore: {str(e)}", exc_info=True)
+            logger.error(f"Error initializing admin fields for users: {str(e)}", exc_info=True)
             return False
 
     def sync_payment_screenshots(self, register_df: pd.DataFrame):
         """
-        Sync payment screenshots and resume links from Register to Firestore admin_students.
-        This ensures existing students have their payment/resume data backed up in Firestore.
+        Sync payment screenshots and resume links from Register to Firestore users collection.
+        This ensures existing users have their payment/resume data backed up in Firestore.
         """
         try:
             if register_df.empty:
                 return
             
             # Use the existing Firestore sync function
-            # This function already handles the logic of syncing payment/resume from Register to Firestore
+            # This function already handles the logic of syncing payment/resume from Register to Firestore users
             success = sync_payment_backups_to_firestore(register_df)
             
             if success:
