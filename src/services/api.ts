@@ -454,6 +454,9 @@ export interface UserWithAdminData {
   'Email Address': string;
   Name?: string;
   name?: string;
+  email?: string;
+  isActive?: boolean;
+  role?: string;
   attendance?: Record<string, boolean>;
   assignmentGrades?: Record<string, Record<string, Record<string, string>>>;
   'Teacher Evaluation'?: string;

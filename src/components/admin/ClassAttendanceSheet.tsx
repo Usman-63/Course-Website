@@ -27,8 +27,8 @@ export default function ClassAttendanceSheet({ classSession, students, isOpen, o
       const initialPresent = new Set<string>();
       students.forEach(s => {
         try {
-          const att = typeof s.Attendance === 'string' ? JSON.parse(s.Attendance) : s.Attendance;
-          if (att && att[classSession.id]) {
+          const att = typeof s.attendance === 'string' ? JSON.parse(s.attendance) : s.attendance;
+          if (att && typeof att === 'object' && att[classSession.id]) {
             initialPresent.add(s['Email Address']);
           }
         } catch {}

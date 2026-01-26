@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '../../services/firebase';
 import { auth } from '../../services/firebase';
-import { collection, query, onSnapshot, doc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { Users, Search, ExternalLink, Shield, ShieldAlert, Trash2, Loader, Edit } from 'lucide-react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { Users, Search, ExternalLink, Shield, ShieldAlert, Loader, Edit } from 'lucide-react';
 import { getCourseData, getUsersWithAdminData, UserWithAdminData } from '../../services/api';
 import { classService } from '../../services/classService';
 import StudentEditSheet from './StudentEditSheet';
 
 interface User extends UserWithAdminData {
   id: string;
+  email?: string;
+  name?: string;
   role?: string;
   isActive?: boolean;
   createdAt?: any;
@@ -140,35 +142,13 @@ const StudentManager: React.FC = () => {
         id: s._id,
         email: s['Email Address'],
         name: s.Name || s.name || '',
-        isActive: s.isActive,  // Map isActive from API response
-        role: s.role,  // Map role from API response
+        isActive: s.isActive,
+        role: s.role,
       })) as User[];
       setStudents(updatedUsers);
     } catch (error) {
       console.error("Error toggling activation:", error);
       alert("Failed to update user status");
-    }
-  };
-
-  const deleteStudent = async (userId: string, userName: string) => {
-    if (window.confirm(`Are you sure you want to delete ${userName}? This cannot be undone.`)) {
-      try {
-        await deleteDoc(doc(db, 'users', userId));
-        // Refresh students list
-        const response = await getUsersWithAdminData();
-        const updatedUsers = response.students.map((s) => ({
-          ...s,
-          id: s._id,
-          email: s['Email Address'],
-          name: s.Name || s.name || '',
-          isActive: s.isActive,  // Map isActive from API response
-          role: s.role,  // Map role from API response
-        })) as User[];
-        setStudents(updatedUsers);
-      } catch (error) {
-        console.error("Error deleting student:", error);
-        alert("Failed to delete student");
-      }
     }
   };
 

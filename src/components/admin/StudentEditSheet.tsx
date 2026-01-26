@@ -1,7 +1,7 @@
 import React, { Fragment, useState, useEffect } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { X, Save, CheckSquare, Square, AlertCircle, Loader2, TrendingUp, FileText, Users, DollarSign, MessageSquare } from 'lucide-react';
-import { UserWithAdminData, updateUserAdminData } from '../../services/api';
+import { UserWithAdminData } from '../../services/api';
 
 interface StudentEditSheetProps {
   isOpen: boolean;
@@ -229,7 +229,7 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                                   </label>
                                   <input
                                     type="text"
-                                    value={formData[gradeKey] || ''}
+                                    value={(formData as Record<string, unknown>)[gradeKey] as string || ''}
                                     onChange={(e) => setFormData({ ...formData, [gradeKey]: e.target.value })}
                                     className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
                                     placeholder="Grade (e.g. 95)"

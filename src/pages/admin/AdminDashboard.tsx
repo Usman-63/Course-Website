@@ -103,12 +103,6 @@ const AdminDashboard: React.FC = () => {
     loadData();
   }, []);
 
-  const handleSyncNow = async () => {
-    // Sync is no longer needed - data is fetched directly from forms
-    // This function is kept for UI compatibility but does nothing
-    return;
-  };
-
   if (loading) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center bg-gray-50 px-4">
