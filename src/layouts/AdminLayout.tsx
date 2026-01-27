@@ -114,9 +114,9 @@ export default function AdminLayout() {
                 <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-black px-6 pb-4">
                   <div className="flex h-16 shrink-0 items-center gap-2 mt-4">
                      <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
-                        <span className="text-black font-bold text-lg">S</span>
+                        <span className="text-black font-bold text-lg">D</span>
                       </div>
-                      <span className="text-white font-display font-bold text-xl">Smansys</span>
+                      <span className="text-white font-display font-bold text-xl">Admin Dashboard</span>
                   </div>
                   <nav className="flex flex-1 flex-col">
                     <ul role="list" className="flex flex-1 flex-col gap-y-4">
@@ -169,9 +169,9 @@ export default function AdminLayout() {
         <div className="flex grow flex-col gap-y-5 overflow-y-auto bg-black px-6 pb-4 shadow-xl">
           <div className="flex h-16 shrink-0 items-center gap-3 mt-6 mb-4">
             <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-lg">
-              <span className="text-black font-bold text-xl">S</span>
+              <span className="text-black font-bold text-xl">D</span>
             </div>
-            <span className="text-white font-display font-bold text-2xl tracking-tight">Smansys</span>
+            <span className="text-white font-display font-bold text-2xl tracking-tight">Admin Dashboard</span>
           </div>
           <nav className="flex flex-1 flex-col">
             <ul role="list" className="flex flex-1 flex-col gap-y-7">

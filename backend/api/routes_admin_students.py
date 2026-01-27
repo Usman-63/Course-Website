@@ -60,6 +60,8 @@ def register_admin_student_routes(
                     'Payment Comment': user.get('paymentComment', ''),
                     'paymentScreenshot': user.get('paymentScreenshot', ''),
                     'Resume Link': user.get('resumeLink', ''),
+                    'progress': user.get('progress', {}),
+                    'submissions': user.get('submissions', {}),
                     '_id': user.get('_id', ''),  # UID
                     'isActive': user.get('isActive'),  # Include isActive field
                     'role': user.get('role'),  # Include role field
@@ -91,6 +93,8 @@ def register_admin_student_routes(
                 'Payment Comment': user.get('paymentComment', ''),
                 'paymentScreenshot': user.get('paymentScreenshot', ''),
                 'Resume Link': user.get('resumeLink', ''),
+                'progress': user.get('progress', {}),
+                'submissions': user.get('submissions', {}),
                 '_id': user.get('_id', ''),  # UID
             }
             
@@ -228,13 +232,31 @@ def register_admin_student_routes(
             )
             return jsonify({"error": f"Failed to fetch Survey students: {str(e)}"}), 500
 
+    # NOTE: The following /admin/students/operations* endpoints are intentionally
+    # kept as thin 410 stubs for backwards compatibility only. The frontend no
+    # longer calls them directly – it uses the newer /register and /survey APIs.
+    # If you are building new features, DO NOT depend on these routes.
+
     @api.route("/admin/students/operations", methods=["GET"])
     @require_auth
     def get_all_students_operations():
         """DEPRECATED: Get all students with merged data. Use /admin/students/register or /admin/students/survey instead."""
         try:
-            logger.warning("DEPRECATED: /admin/students/operations endpoint is deprecated. Use /admin/students/register or /admin/students/survey instead.")
-            return jsonify({"error": "This endpoint is deprecated. Use /admin/students/register or /admin/students/survey instead."}), 410
+            logger.warning(
+                "DEPRECATED: /admin/students/operations endpoint is deprecated. "
+                "Use /admin/students/register or /admin/students/survey instead."
+            )
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "This endpoint is deprecated. Use "
+                            "/admin/students/register or /admin/students/survey instead."
+                        )
+                    }
+                ),
+                410,
+            )
         except Exception as e:  # pragma: no cover - defensive
             logger.error(
                 f"Error in deprecated endpoint: {str(e)}", exc_info=True
@@ -447,8 +469,21 @@ def register_admin_student_routes(
     def get_students_operations_metrics():
         """DEPRECATED: Get dashboard metrics. Metrics are no longer calculated for Operations tab."""
         try:
-            logger.warning("DEPRECATED: /admin/students/operations/metrics endpoint is deprecated.")
-            return jsonify({"error": "This endpoint is deprecated. Operations tab no longer shows metrics."}), 410
+            logger.warning(
+                "DEPRECATED: /admin/students/operations/metrics endpoint is deprecated. "
+                "Operations metrics are now provided via Firestore sync snapshots only."
+            )
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "This endpoint is deprecated. Operations tab no longer "
+                            "calculates metrics from Google Sheets."
+                        )
+                    }
+                ),
+                410,
+            )
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Error in deprecated endpoint: {str(e)}", exc_info=True)
             return jsonify({"error": f"Failed: {str(e)}"}), 500
@@ -458,8 +493,21 @@ def register_admin_student_routes(
     def get_students_operations_status():
         """DEPRECATED: Get students with missing items. Status is no longer calculated for Operations tab."""
         try:
-            logger.warning("DEPRECATED: /admin/students/operations/status endpoint is deprecated.")
-            return jsonify({"error": "This endpoint is deprecated. Operations tab no longer shows status."}), 410
+            logger.warning(
+                "DEPRECATED: /admin/students/operations/status endpoint is deprecated. "
+                "Operations status is no longer maintained."
+            )
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "This endpoint is deprecated. Operations tab no longer "
+                            "shows status for missing payment/attendance/grades."
+                        )
+                    }
+                ),
+                410,
+            )
         except Exception as e:  # pragma: no cover - defensive
             logger.error(f"Error in deprecated endpoint: {str(e)}", exc_info=True)
             return jsonify({"error": f"Failed: {str(e)}"}), 500

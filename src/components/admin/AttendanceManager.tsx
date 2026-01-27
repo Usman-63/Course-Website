@@ -44,7 +44,8 @@ export default function AttendanceManager({ students, onUpdate }: AttendanceMana
       setNewClass({ date: '', topic: '', description: '' });
       loadClasses();
     } catch (error) {
-      toast.error('Failed to add class');
+      const message = error instanceof Error ? error.message : 'Failed to add class';
+      toast.error(message);
     }
   };
 
@@ -55,7 +56,8 @@ export default function AttendanceManager({ students, onUpdate }: AttendanceMana
       toast.success('Class deleted');
       loadClasses();
     } catch (error) {
-      toast.error('Failed to delete class');
+      const message = error instanceof Error ? error.message : 'Failed to delete class';
+      toast.error(message);
     }
   };
 

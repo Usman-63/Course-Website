@@ -6,6 +6,8 @@ import { doc, onSnapshot } from 'firebase/firestore';
 interface UserProfile {
   role?: string;
   isActive?: boolean;
+  // Allow dynamic profile fields from Firestore without losing type-safety for core fields
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
 
@@ -63,6 +65,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setLoading(false);
       }, (error) => {
         console.error("Error fetching user profile:", error);
+        // Surface a minimal, non-blocking error state
+        setUserProfile((prev) => ({
+          ...(prev || {}),
+          lastProfileError: error?.message ?? 'Failed to load user profile',
+        }));
         setLoading(false);
       });
     } else {

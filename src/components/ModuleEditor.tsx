@@ -20,7 +20,7 @@ const ModuleEditor: React.FC<ModuleEditorProps> = ({ modules, courseId, onUpdate
     focus: '',
     topics: [],
     order: modules.length + 1,
-    labCount: 1,
+    labCount: 0,
     isVisible: true,
   });
   const [topicInput, setTopicInput] = useState('');
@@ -32,12 +32,13 @@ const ModuleEditor: React.FC<ModuleEditorProps> = ({ modules, courseId, onUpdate
     try {
       await addModule(formData as Omit<CourseModule, 'id'>, courseId);
       setShowAddForm(false);
-      setFormData({ title: '', hours: 0, focus: '', topics: [], order: modules.length + 1, labCount: 1, isVisible: true });
+      setFormData({ title: '', hours: 0, focus: '', topics: [], order: modules.length + 1, labCount: 0, isVisible: true });
       toast.success('Module added successfully');
       onUpdate();
     } catch (error) {
       console.error('Failed to add module:', error);
-      toast.error('Failed to add module');
+      const message = error instanceof Error ? error.message : 'Failed to add module';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +54,8 @@ const ModuleEditor: React.FC<ModuleEditorProps> = ({ modules, courseId, onUpdate
       onUpdate();
     } catch (error) {
       console.error('Failed to update module:', error);
-      toast.error('Failed to update module');
+      const message = error instanceof Error ? error.message : 'Failed to update module';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -140,7 +142,7 @@ const ModuleEditor: React.FC<ModuleEditorProps> = ({ modules, courseId, onUpdate
           onClick={() => {
             setShowAddForm(true);
             setEditingModule(null);
-            setFormData({ title: '', hours: 0, focus: '', topics: [], order: modules.length + 1, labCount: 1, isVisible: true });
+            setFormData({ title: '', hours: 0, focus: '', topics: [], order: modules.length + 1, labCount: 0, isVisible: true });
           }}
           className="bg-yellow text-navy px-4 py-2 rounded-lg font-semibold flex items-center gap-2 hover:bg-yellow-hover transition-colors shadow-sm"
         >
@@ -208,9 +210,12 @@ const ModuleEditor: React.FC<ModuleEditorProps> = ({ modules, courseId, onUpdate
                 <label className="block text-gray-700 font-semibold mb-2 text-sm">Number of Labs</label>
                 <input
                     type="number"
-                    min="1"
-                    value={formData.labCount || 1}
-                    onChange={(e) => setFormData({ ...formData, labCount: parseInt(e.target.value) || 1 })}
+                    min="0"
+                    value={formData.labCount ?? 0}
+                    onChange={(e) => {
+                      const value = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                      setFormData({ ...formData, labCount: Number.isNaN(value) ? 0 : value });
+                    }}
                     className="w-full px-4 py-2 bg-white border border-gray-300 rounded-lg text-gray-900 focus:outline-none focus:ring-2 focus:ring-yellow"
                 />
                 </div>

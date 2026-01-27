@@ -26,19 +26,13 @@ def get_total_labs_count_from_data(course_data: Optional[Dict[str, Any]]) -> int
         
         total_labs = 0
         
-        # Check for new multi-course structure
+        # Check for new multi-course structure (count labs for all courses/modules,
+        # including those that are currently hidden, so that hiding a course does
+        # not cause assignment grades to be dropped).
         if 'courses' in course_data and isinstance(course_data['courses'], list):
             for course in course_data['courses']:
-                # Only count labs from visible courses
-                if course.get('isVisible', True) is False:
-                    continue
-                    
                 if 'modules' in course and isinstance(course['modules'], list):
                     for module in course['modules']:
-                        # Only count labs from visible modules
-                        if module.get('isVisible', True) is False:
-                            continue
-                            
                         lab_count = module.get('labCount', 1)
                         # Coerce to int if string
                         if isinstance(lab_count, str):
@@ -54,10 +48,6 @@ def get_total_labs_count_from_data(course_data: Optional[Dict[str, Any]]) -> int
         # Check for legacy single-course structure
         elif 'modules' in course_data and isinstance(course_data['modules'], list):
             for module in course_data['modules']:
-                # Only count labs from visible modules
-                if module.get('isVisible', True) is False:
-                    continue
-                    
                 lab_count = module.get('labCount', 1)
                 # Coerce to int if string
                 if isinstance(lab_count, str):
@@ -109,13 +99,10 @@ def get_course_module_structure(course_data: Optional[Dict[str, Any]]) -> Dict[s
         if not course_data:
             return structure
         
-        # Check for new multi-course structure
+        # Check for new multi-course structure (include all courses/modules so that
+        # admin assignment grade structures persist even if a course is hidden).
         if 'courses' in course_data and isinstance(course_data['courses'], list):
             for course in course_data['courses']:
-                # Only include visible courses
-                if course.get('isVisible', True) is False:
-                    continue
-                    
                 course_id = course.get('id', '')
                 if not course_id:
                     continue
@@ -124,10 +111,6 @@ def get_course_module_structure(course_data: Optional[Dict[str, Any]]) -> Dict[s
                 
                 if 'modules' in course and isinstance(course['modules'], list):
                     for module in course['modules']:
-                        # Only include visible modules
-                        if module.get('isVisible', True) is False:
-                            continue
-                            
                         module_id = module.get('id', '')
                         if not module_id:
                             continue
@@ -152,10 +135,6 @@ def get_course_module_structure(course_data: Optional[Dict[str, Any]]) -> Dict[s
             structure[course_id] = {}
             
             for module in course_data['modules']:
-                # Only include visible modules
-                if module.get('isVisible', True) is False:
-                    continue
-                    
                 module_id = module.get('id', '')
                 if not module_id:
                     continue

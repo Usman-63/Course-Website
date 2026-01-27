@@ -124,7 +124,8 @@ export const getCourseData = async (): Promise<CourseData> => {
   try {
     localStorage.setItem(COURSE_DATA_CACHE_KEY, JSON.stringify(data));
     // Use the version from the fetched data if available, otherwise use the one we just fetched
-    const versionToStore = (data as any).version || remoteVersion;
+    const versionToStore =
+      (data as Partial<CourseData> & { version?: number }).version ?? remoteVersion;
     localStorage.setItem(COURSE_VERSION_CACHE_KEY, versionToStore.toString());
   } catch (e) {
     console.warn('Failed to cache course data:', e);
@@ -309,6 +310,15 @@ export const addModule = async (module: Omit<CourseModule, 'id'>, courseId?: str
       clearAuthToken();
       throw new Error('Authentication failed');
     }
+    // Try to surface a more specific validation error from the backend
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.error === 'string') {
+        throw new Error(errorBody.error);
+      }
+    } catch {
+      // fall through to generic message
+    }
     throw new Error('Failed to add module');
   }
   
@@ -339,6 +349,15 @@ export const updateModule = async (moduleId: string, module: Partial<CourseModul
     if (response.status === 401) {
       clearAuthToken();
       throw new Error('Authentication failed');
+    }
+    // Try to surface a more specific validation error from the backend
+    try {
+      const errorBody = await response.json();
+      if (errorBody && typeof errorBody.error === 'string') {
+        throw new Error(errorBody.error);
+      }
+    } catch {
+      // ignore JSON/parsing errors and fall back
     }
     throw new Error('Failed to update module');
   }
@@ -468,6 +487,9 @@ export interface UserWithAdminData {
   paymentScreenshot?: string;
   'Resume Link'?: string;
   resumeLink?: string;
+  // Student-side progress and submissions (for admin view)
+  progress?: Record<string, boolean>;
+  submissions?: Record<string, string>;
 }
 
 export const getUsersWithAdminData = async (): Promise<{ success: boolean; students: UserWithAdminData[] }> => {
@@ -573,25 +595,9 @@ export interface StudentOperations {
   'Assignment 1 Grade'?: string;
   'Assignment 2 Grade'?: string;
   'Teacher Evaluation'?: string;
+  // Allow additional form fields while keeping core properties typed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
-}
-
-export interface OperationsMetrics {
-  total_students: number;
-  paid_count: number;
-  unpaid_count: number;
-  has_resume_count: number;
-  onboarding_percentage: number;
-  survey_filled_count: number;
-  survey_not_filled_count: number;
-  last_synced?: string;
-}
-
-export interface OperationsStatus {
-  missing_payment: Array<{ email: string; name: string; status: string }>;
-  missing_resume: Array<{ email: string; name: string }>;
-  missing_attendance: Array<{ email: string; name: string }>;
-  missing_grades: Array<{ email: string; name: string; missing: string[] }>;
 }
 
 export const getStudentOperations = async (email: string): Promise<{ success: boolean; student: StudentOperations }> => {
@@ -682,79 +688,3 @@ export const bulkUpdateStudentsOperations = async (
   
   return response.json();
 };
-
-export const getOperationsMetrics = async (): Promise<{ success: boolean; metrics: OperationsMetrics }> => {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-  
-  const response = await fetchWithRetry(`${API_URL}/api/admin/students/operations/metrics`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    timeout: 10000,
-    retries: 2,
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearAuthToken();
-      throw new Error('Authentication failed');
-    }
-    throw new Error('Failed to fetch operations metrics');
-  }
-  
-  return response.json();
-};
-
-export const getOperationsStatus = async (): Promise<{ success: boolean; status: OperationsStatus }> => {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-  
-  const response = await fetchWithRetry(`${API_URL}/api/admin/students/operations/status`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    timeout: 10000,
-    retries: 2,
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearAuthToken();
-      throw new Error('Authentication failed');
-    }
-    throw new Error('Failed to fetch operations status');
-  }
-  
-  return response.json();
-};
-
-export const getOperationsEmails = async (): Promise<{ success: boolean; emails: string[]; emails_string: string; count: number }> => {
-  const token = getAuthToken();
-  if (!token) {
-    throw new Error('Not authenticated');
-  }
-  
-  const response = await fetchWithRetry(`${API_URL}/api/admin/students/operations/emails`, {
-    headers: {
-      'Authorization': `Bearer ${token}`,
-    },
-    timeout: 10000,
-    retries: 2,
-  });
-  
-  if (!response.ok) {
-    if (response.status === 401) {
-      clearAuthToken();
-      throw new Error('Authentication failed');
-    }
-    throw new Error('Failed to fetch operations emails');
-  }
-  
-  return response.json();
-};
-

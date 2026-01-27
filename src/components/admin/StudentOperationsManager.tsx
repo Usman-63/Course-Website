@@ -7,7 +7,6 @@ import {
 import { 
   getRegisterStudents,
   getSurveyStudents,
-  getOperationsEmails,
   StudentOperations,
 } from '../../services/api';
 import { useToast } from '../Toast';
@@ -161,9 +160,11 @@ const StudentOperationsManager: React.FC = () => {
       
       setRegisterStudents(registerRes.students || []);
       setSurveyStudents(surveyRes.students || []);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Failed to load operations data:', error);
-      toast.error(error.message || 'Failed to load student operations data');
+      const message =
+        error instanceof Error ? error.message : 'Failed to load student operations data';
+      toast.error(message);
     } finally {
       setLoading(false);
       loadingRef.current = false;
@@ -187,9 +188,11 @@ const StudentOperationsManager: React.FC = () => {
       toast.info('Refreshing data from Google Form responses. This can take 10–30 seconds on first load.');
       await loadData(true);
       toast.success('Student data refreshed from latest form responses.');
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to refresh from responses:', err);
-      toast.error(err?.message || 'Failed to refresh from responses');
+      const message =
+        err instanceof Error ? err.message : 'Failed to refresh from responses';
+      toast.error(message);
     } finally {
       setIsForceRefreshing(false);
     }
@@ -197,12 +200,26 @@ const StudentOperationsManager: React.FC = () => {
 
   const handleCopyEmails = async () => {
     try {
-      const res = await getOperationsEmails();
-      await navigator.clipboard.writeText(res.emails_string);
-      toast.success(`Copied ${res.count} emails to clipboard`);
-    } catch (error: any) {
+      const currentStudents = activeTab === 'register' ? registerStudents : surveyStudents;
+      const emails = currentStudents
+        .map(s => s['Email Address'])
+        .filter((e): e is string => !!e && e.trim().length > 0);
+
+      if (emails.length === 0) {
+        toast.error('No emails found for this tab.');
+        return;
+      }
+
+      const uniqueEmails = Array.from(new Set(emails));
+      const emailsString = uniqueEmails.join(', ');
+
+      await navigator.clipboard.writeText(emailsString);
+      toast.success(`Copied ${uniqueEmails.length} ${activeTab === 'register' ? 'Register' : 'Survey'} emails to clipboard`);
+    } catch (error: unknown) {
       console.error('Failed to copy emails:', error);
-      toast.error(error.message || 'Failed to copy emails');
+      const message =
+        error instanceof Error ? error.message : 'Failed to copy emails';
+      toast.error(message);
     }
   };
 

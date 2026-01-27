@@ -9,6 +9,7 @@ interface StudentEditSheetProps {
   student: UserWithAdminData | null;
   onSave: (uid: string, updates: Partial<UserWithAdminData>) => Promise<void>;
   totalLabs: number;
+  labLabels: string[];
   classMap: Map<string, string>; // Map class ID to topic
 }
 
@@ -18,6 +19,7 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
   student, 
   onSave, 
   totalLabs,
+  labLabels,
   classMap
 }) => {
   const [formData, setFormData] = useState<Partial<UserWithAdminData>>({});
@@ -222,10 +224,11 @@ const StudentEditSheet: React.FC<StudentEditSheetProps> = ({
                             {Array.from({ length: totalLabs }, (_, i) => {
                               const assignmentNum = i + 1;
                               const gradeKey = `Assignment ${assignmentNum} Grade`;
+                              const label = labLabels[i] || `Assignment ${assignmentNum}`;
                               return (
                                 <div key={i}>
                                   <label className="block text-gray-600 text-sm font-medium mb-1.5">
-                                    Assignment {assignmentNum}
+                                    {label}
                                   </label>
                                   <input
                                     type="text"

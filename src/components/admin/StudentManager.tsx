@@ -3,7 +3,7 @@ import { db } from '../../services/firebase';
 import { auth } from '../../services/firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { Users, Search, ExternalLink, Shield, ShieldAlert, Loader, Edit } from 'lucide-react';
-import { getCourseData, getUsersWithAdminData, UserWithAdminData } from '../../services/api';
+import { getAdminData, getUsersWithAdminData, UserWithAdminData } from '../../services/api';
 import { classService } from '../../services/classService';
 import StudentEditSheet from './StudentEditSheet';
 
@@ -27,6 +27,7 @@ const StudentManager: React.FC = () => {
   const [editingStudent, setEditingStudent] = useState<UserWithAdminData | null>(null);
   const [classes, setClasses] = useState<any[]>([]);
   const [totalLabs, setTotalLabs] = useState(0);
+  const [labLabels, setLabLabels] = useState<string[]>([]);
 
   // Wait for auth to be ready
   useEffect(() => {
@@ -44,24 +45,49 @@ const StudentManager: React.FC = () => {
   useEffect(() => {
     if (!authReady) return;
 
-    // Fetch course data to get total number of modules
+    // Fetch course data to get total number of modules and labs for the active course
     const fetchCourseData = async () => {
       try {
-        const courseData = await getCourseData();
-        setTotalModules(courseData.modules?.length || 0);
-        
-        // Calculate total labs
-        let labs = 0;
-        if (courseData.modules) {
-          courseData.modules.forEach((module: any) => {
-            labs += module.labCount || 0;
-          });
+        const courseData = await getAdminData();
+
+        const courses = courseData.courses || [];
+        // Prefer the currently published course; fall back to the first one
+        const activeCourse = courses.find((c) => c.isVisible) || courses[0];
+
+        if (activeCourse) {
+          const modules = activeCourse.modules || [];
+          setTotalModules(modules.length);
+
+          // Build a flat list of lab labels: ["Module 1 Lab 1", "Module 1 Lab 2", "Module 2 Lab 1", ...]
+          const labels: string[] = [];
+          let labCountTotal = 0;
+
+          modules
+            .slice() // avoid mutating original
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+            .forEach((module, index) => {
+              const moduleOrder = module.order ?? index + 1;
+              const moduleLabCount = module.labCount && module.labCount > 0 ? module.labCount : 0;
+
+              for (let i = 1; i <= moduleLabCount; i += 1) {
+                labels.push(`Module ${moduleOrder} Lab ${i}`);
+              }
+
+              labCountTotal += moduleLabCount;
+            });
+
+          setTotalLabs(labCountTotal);
+          setLabLabels(labels);
+        } else {
+          setTotalModules(0);
+          setTotalLabs(0);
+          setLabLabels([]);
         }
-        setTotalLabs(labs);
       } catch (error) {
         console.error("Error fetching course data:", error);
         setTotalModules(0);
         setTotalLabs(0);
+        setLabLabels([]);
       }
     };
     
@@ -349,6 +375,7 @@ const StudentManager: React.FC = () => {
           student={editingStudent as any}
           onSave={handleSaveStudent}
           totalLabs={totalLabs}
+          labLabels={labLabels}
           classMap={new Map(classes.map(c => [c.id, c.topic]))}
         />
       )}

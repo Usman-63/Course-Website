@@ -28,6 +28,8 @@ try {
   console.error("Firebase initialization error:", error);
 }
 
+// Export guards: callers should handle the case where Firebase isn't fully configured.
 export { db, auth };
-export default app!; // Use bang operator but be aware it might be undefined at runtime if config fails
+
+export default app;
 

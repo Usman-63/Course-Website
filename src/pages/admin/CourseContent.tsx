@@ -53,7 +53,8 @@ const CourseContent: React.FC = () => {
       setShowAddCourse(false);
       await loadData();
     } catch (error) {
-      toast.error('Failed to create course');
+      const message = error instanceof Error ? error.message : 'Failed to create course';
+      toast.error(message);
       setIsLoading(false);
     }
   };
@@ -65,7 +66,8 @@ const CourseContent: React.FC = () => {
       toast.success('Course updated');
       await loadData();
     } catch (error) {
-      toast.error('Failed to update course');
+      const message = error instanceof Error ? error.message : 'Failed to update course';
+      toast.error(message);
       setIsLoading(false);
     }
   };
@@ -84,7 +86,8 @@ const CourseContent: React.FC = () => {
       
       await loadData();
     } catch (error) {
-      toast.error('Failed to delete course');
+      const message = error instanceof Error ? error.message : 'Failed to delete course';
+      toast.error(message);
       setIsLoading(false);
     }
   };
@@ -105,7 +108,8 @@ const CourseContent: React.FC = () => {
       toast.success('Metadata saved successfully!');
     } catch (error) {
       console.error('Failed to save metadata:', error);
-      toast.error('Failed to save metadata');
+      const message = error instanceof Error ? error.message : 'Failed to save metadata';
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
@@ -215,6 +219,8 @@ const CourseContent: React.FC = () => {
                                     onClick={() => {
                                         setEditingCourseId(activeCourse.id);
                                         setEditCourseTitle(activeCourse.title);
+                                        // Scroll to top so the edit controls are visible
+                                        window.scrollTo({ top: 0, behavior: 'smooth' });
                                     }}
                                     className="text-gray-400 hover:text-gray-600"
                                 >

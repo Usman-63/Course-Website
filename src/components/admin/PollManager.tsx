@@ -133,7 +133,7 @@ const PollManager: React.FC = () => {
     setIsActive(true);
   };
 
-  const downloadCSV = (poll: Poll) => {
+    const downloadCSV = (poll: Poll) => {
     if (!poll.votes || poll.votes.length === 0) {
       alert("No votes to export");
       return;

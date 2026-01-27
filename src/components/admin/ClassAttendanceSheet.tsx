@@ -25,7 +25,7 @@ export default function ClassAttendanceSheet({ classSession, students, isOpen, o
     if (isOpen) {
       // Initialize present emails from current data
       const initialPresent = new Set<string>();
-      students.forEach(s => {
+      students.forEach((s) => {
         try {
           const att = typeof s.attendance === 'string' ? JSON.parse(s.attendance) : s.attendance;
           if (att && typeof att === 'object' && att[classSession.id]) {

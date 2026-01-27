@@ -51,7 +51,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLoginSuccess }) => {
         setError(result.error || 'Invalid password');
         setIsLoading(false);
       }
-    } catch (err) {
+    } catch {
       setError('Login failed. Please check your connection and try again.');
       setIsLoading(false);
     }
